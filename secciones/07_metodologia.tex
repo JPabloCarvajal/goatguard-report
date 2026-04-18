@@ -1,0 +1,107 @@
+\section{Metodología}
+\label{sec:metodologia}
+
+El desarrollo del proyecto adopta una metodología basada en la 
+adaptación del Proceso Unificado Racional (Rational Unified Process, 
+RUP) al contexto del Proyecto Integrador, complementada con 
+prácticas iterativas e incrementales propias del desarrollo ágil 
+moderno. La elección responde a tres características del proyecto: 
+la duración semestral con entregables formales por fase, que se 
+alinea con el ciclo de vida definido por hitos del RUP; la naturaleza 
+iterativa del desarrollo, que requiere ciclos cortos de construcción 
+y validación dentro de cada fase; y la necesidad de gestión explícita 
+de riesgos técnicos, particularmente en componentes sensibles como la 
+captura de tráfico a bajo nivel y el pipeline de análisis distribuido 
+\cite{kruchten2003rup}.
+
+\subsection{Adaptación de RUP al Proyecto Integrador}
+
+El RUP organiza el ciclo de vida del software en cuatro fases 
+secuenciales que separan el tipo de trabajo predominante en cada 
+momento: Inicio, Elaboración, Construcción y Transición 
+\cite{jacobson1999up}. Cada fase se desarrolla de forma iterativa 
+mediante ciclos numerados 1 a $k$, donde el número de iteraciones 
+depende de la complejidad del trabajo específico de la fase. La 
+adaptación al Proyecto Integrador conserva las cuatro fases del 
+modelo original y les asocia una etapa del proyecto, un conjunto de 
+artefactos de cierre y mecanismos de retroalimentación entre fases. 
+El esquema resultante se ilustra en la Fig.~\ref{fig:diagrama-rup}.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\columnwidth]{diagrama_rup.png}
+\caption{Adaptación de las cuatro fases del RUP al ciclo de vida del Proyecto Integrador, con sus respectivas etapas, artefactos de cierre y retroalimentaciones entre fases.}
+\label{fig:diagrama-rup}
+\end{figure}
+
+La fase de Inicio corresponde a la etapa de definición del problema y 
+alcance del proyecto, y produce como artefactos de cierre el acta de 
+constitución y el documento de definición. La fase de Elaboración 
+corresponde a la etapa de análisis de requerimientos y planificación, 
+y cierra con el documento de requerimientos y los diagramas de 
+arquitectura. La fase de Construcción corresponde a la etapa de 
+diseño y desarrollo del producto, y produce las evidencias de pruebas 
+y el código fuente de los incrementos. La fase de Transición 
+corresponde a la etapa de divulgación de resultados del proyecto y 
+del producto, y produce el informe de pruebas y despliegue junto con 
+el informe final.
+
+Entre fases operan tres flujos de retroalimentación. Los ajustes de 
+alcance originados en Elaboración pueden afectar los supuestos 
+establecidos durante Inicio. Los riesgos y ajustes surgidos durante 
+Construcción retroalimentan las decisiones de Elaboración. Los 
+hallazgos del proceso de retroalimentación y los cambios identificados 
+en etapas finales se reinyectan hacia fases tempranas, garantizando 
+que los artefactos producidos al cierre de cada hito reflejen el 
+estado real del desarrollo y no una especificación congelada al 
+inicio del proyecto.
+
+\subsection{Fases, hitos y artefactos}
+
+La fase de \textit{Inicio} establece el caso de negocio y delimita el 
+sistema mediante la identificación del problema, las causas que lo 
+originan y los actores involucrados. Los artefactos producidos son el 
+acta de constitución del proyecto, que fija el alcance y las 
+exclusiones, y el documento de definición, que desarrolla el árbol 
+del problema, los objetivos y la primera revisión del estado del arte 
+que justifica la viabilidad técnica del enfoque propuesto.
+
+La fase de \textit{Elaboración} traduce los objetivos en 
+requerimientos verificables y establece la estructura técnica del 
+sistema. Los requerimientos funcionales y no funcionales se 
+documentan siguiendo el estándar IEEE 830, con identificadores 
+únicos, prioridades y criterios de aceptación que habilitan la 
+trazabilidad posterior hacia los casos de prueba. En paralelo se 
+construyen los diagramas de arquitectura C4 (contexto, contenedores, 
+componentes) que describen la descomposición del sistema y las 
+interfaces entre componentes, junto con la matriz de riesgos que 
+califica cada riesgo identificado en términos de probabilidad e 
+impacto.
+
+La fase de \textit{Construcción} es la más extensa del ciclo y se 
+ejecuta de forma iterativa. Cada ciclo produce un incremento 
+funcional del sistema: primero el núcleo del sensor de captura con 
+su canal TCP y el receptor correspondiente; luego el canal UDP de 
+métricas y el motor de persistencia en PostgreSQL; después el 
+pipeline de análisis con Zeek y el motor de detección de anomalías; 
+posteriormente la API REST, el canal WebSocket y la aplicación móvil; 
+y finalmente la configuración de la infraestructura de integración y 
+entrega continua. Cada iteración se cierra con pruebas unitarias e 
+integración del incremento producido, que en conjunto conforman las 
+evidencias de prueba y el código fuente versionado de los 
+incrementos.
+
+La fase de \textit{Transición} evalúa el éxito del proyecto mediante 
+la comparación directa con los objetivos establecidos: revisión de 
+los entregables, contrastación entre funcionalidades implementadas y 
+requerimientos especificados, validación de las pruebas realizadas y 
+medición del cumplimiento del cronograma. El resultado se consolida 
+en el informe de pruebas y despliegue, y culmina con la producción 
+del informe de investigación y su sustentación ante 
+la Jornada de Socialización de Proyectos Integradores de la Facultad 
+de Ingeniería de Sistemas e Informática de la Universidad Pontificia 
+Bolivariana.
+
+\subsection{Herramientas de gestión, control de versiones e integración continua}
+
+AQUI VA LO DE JOHAN

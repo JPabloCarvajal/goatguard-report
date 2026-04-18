@@ -1,0 +1,72 @@
+\section{Alcance y delimitación}
+~\label{sec:alcance}
+
+El alcance del proyecto se define sobre segmentos de red 
+de pequeña o mediana escala administrados por un único 
+responsable, que accede al sistema desde una aplicación móvil y cuenta 
+con conocimientos técnicos en administración de redes. Los sensores de 
+captura se despliegan en los endpoints bajo control del administrador, 
+mientras que los dispositivos ajenos a esa gestión solo son objeto de 
+detección e identificación básica a partir de técnicas de 
+descubrimiento activo.
+
+\subsection{Inclusiones}
+
+El proyecto comprende el desarrollo de los cuatro componentes 
+establecidos en el acta de constitución:
+
+\begin{itemize}
+    \item \textbf{Sensores de captura desplegables en endpoints}, 
+    responsables de capturar el tráfico de red de la interfaz en la 
+    que están instalados y transmitirlo hacia un servidor colector 
+    centralizado dentro de la misma red local, recolectar métricas 
+    básicas del estado del endpoint como uso de CPU y memoria, y 
+    ejecutar descubrimiento básico de otros dispositivos presentes en 
+    el segmento de red mediante técnicas como ARP.@
+
+    \item \textbf{Backend de análisis centralizado}, encargado de 
+    recibir y almacenar los datos enviados por los sensores, procesar 
+    el tráfico capturado para generar métricas contextualizadas como 
+    consumo de ancho de banda, retransmisiones TCP, tiempos de 
+    respuesta DNS y perfiles de tráfico por dispositivo, construir y 
+    mantener el inventario dinámico de activos, identificar 
+    comportamientos inusuales y exponer la información procesada a 
+    través de una API consumida por la aplicación móvil.
+
+    \item \textbf{Aplicación móvil de consulta y notificación}, que 
+    permite al administrador consultar el inventario de dispositivos, 
+    visualizar métricas tanto a nivel de segmento de red como por 
+    endpoint individual, contextualizar los dispositivos dentro del 
+    segmento como representación de la topología, y recibir 
+    notificaciones push ante comportamientos de tráfico inusuales.
+
+    \item \textbf{Infraestructura de integración y entrega continua}, 
+    que gestiona la compilación, pruebas automatizadas y despliegue 
+    del backend, así como la publicación de la aplicación móvil.
+\end{itemize}
+
+\subsection{Exclusiones}
+
+El proyecto no contempla los siguientes aspectos, definidos 
+explícitamente como fuera de alcance:
+
+\begin{itemize}
+    \item Mecanismos de respuesta automática ante incidentes; el 
+    sistema monitorea y notifica, pero no interviene sobre la red.
+
+    \item Administración activa de la red, como denegar o permitir 
+    acceso a dispositivos.
+
+    \item Gestión o control remoto de los dispositivos conectados.
+
+    \item Monitoreo del tráfico de dispositivos que no cuenten con 
+    sensor instalado; para estos, el sistema se limita a su detección 
+    e identificación básica dentro del inventario.
+
+    \item Infraestructuras de gran escala, como redes con múltiples 
+    sedes, segmentos WAN o despliegues en nubes públicas.
+
+    \item Almacenamiento histórico ilimitado de datos de tráfico; el 
+    sistema opera con ventanas de retención acotadas por la capacidad 
+    de la infraestructura disponible.
+\end{itemize}

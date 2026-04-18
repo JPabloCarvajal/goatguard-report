@@ -1,0 +1,98 @@
+\documentclass[journal]{IEEEtran}
+
+% ===== Idioma y codificación =====
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[spanish,es-tabla]{babel}
+\usepackage{lmodern}
+\usepackage{float}
+
+% ===== Gráficos y tablas =====
+\usepackage{graphicx}
+\graphicspath{{figuras/}}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{multirow}
+
+% ===== Matemáticas =====
+\usepackage{amsmath,amssymb}
+\usepackage{siunitx}
+
+% ===== Código fuente =====
+\usepackage{listings}
+\usepackage{xcolor}
+\lstset{
+  basicstyle=\ttfamily\footnotesize,
+  keywordstyle=\color{blue!70!black}\bfseries,
+  commentstyle=\color{green!50!black}\itshape,
+  stringstyle=\color{red!70!black},
+  numbers=left, numberstyle=\tiny\color{gray},
+  frame=single, breaklines=true, tabsize=2,
+  showstringspaces=false, captionpos=b
+}
+
+% ===== Referencias cruzadas y URLs =====
+\usepackage{url}
+\usepackage[hidelinks]{hyperref}
+\usepackage{cleveref}
+
+% ===== Bibliografía =====
+% Opción A: BibTeX (se configura abajo, al final del documento)
+% Si más adelante quieres usarlo, ya está listo.
+
+% ===== Metadata del documento =====
+\title{GOATGuard: Sistema de Monitoreo de Infraestructura \\
+       y Gestión de Seguridad con Acceso Móvil}
+
+\author{Juan Pablo Carvajal Giraldo,
+        Juan David Monsalve Niño,
+        y Johan David Rodríguez Castro
+\thanks{Los autores pertenecen a la Facultad de Ingeniería de Sistemas 
+e Informática de la Universidad Pontificia Bolivariana, Seccional 
+Bucaramanga, Colombia.}
+\thanks{Proyecto Integrador III, dirigido por el docente Omar Pinzón Ardila.}
+\thanks{Bucaramanga, abril de 2026.}}
+
+\markboth{Proyecto Integrador III --- 2026}%
+         {Carvajal, Monsalve, Rodríguez: GOATGuard}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+[TODO: resumen de 150--250 palabras. Se redacta al final del informe.]
+\end{abstract}
+
+\begin{IEEEkeywords}
+monitoreo de red, captura distribuida, detección de anomalías,
+EWMA, inventario dinámico, aplicación móvil, IPFIX, RUP, OSI, LAN.
+\end{IEEEkeywords}
+
+\IEEEpeerreviewmaketitle
+
+% ===== Cuerpo del documento =====
+\input{secciones/01_introduccion}
+\input{secciones/02_planteamiento}
+\input{secciones/03_objetivos}
+\input{secciones/04_alcance}
+\input{secciones/05_marco_teorico}
+\input{secciones/06_marco_legal}
+\input{secciones/07_metodologia}
+\input{secciones/08_desarrollo}
+\input{secciones/09_resultados}
+\input{secciones/10_discusion}
+\input{secciones/11_conclusiones}
+
+% ===== Bibliografía manual =====
+% Cuando estemos listos para pasar a BibTeX cambiamos esto.
+% Por ahora, lista manual estilo IEEE:
+\bibliographystyle{IEEEtran}
+\bibliography{referencias}
+
+% ===== Anexos =====
+\appendices
+
+\input{secciones/anexo_a_edt}
+
+\end{document}

@@ -1,0 +1,41 @@
+\section{Introducción}
+Las redes constituyen la base operativa sobre la cual las 
+organizaciones sostienen sus procesos de comunicación y acceso a la 
+información. Mantener la visibilidad sobre lo que ocurre dentro de estas 
+redes es una condición necesaria para preservar la disponibilidad de los 
+servicios y la seguridad de los activos conectados. Sin embargo, las 
+herramientas de monitoreo tradicionales operan desde un punto fijo 
+mediante puertos mirror o interfaces observadas
+~\cite{kurose2010redes}, lo que ofrece una visión agregada del tráfico 
+pero carece de granularidad por dispositivo, y obliga al administrador 
+a permanecer anclado a una estación de trabajo para consultar esa 
+información. Cualquier desplazamiento genera un intervalo sin vigilancia 
+durante el cual la red sigue operando pero nadie observa su 
+comportamiento.
+
+El presente trabajo aborda esta problemática mediante el desarrollo de 
+GOATGuard, un sistema de monitoreo distribuido con acceso móvil 
+compuesto por tres componentes: un sensor de captura desplegable en 
+cada endpoint de la red, un backend centralizado que recibe, procesa y 
+almacena la información reportada por los sensores, y una aplicación 
+móvil desde la cual el administrador consulta el estado de la red y 
+recibe notificaciones ante comportamientos inusuales. Los sensores 
+capturan el tráfico directamente en el endpoint donde operan, lo que 
+permite correlacionar cada flujo de red con el dispositivo que lo 
+originó sin exponer el contenido del payload~\cite{stevens2004unix}. 
+El backend delega la inspección profunda de protocolos al framework 
+Zeek~\cite{paxson1999zeek} y aplica un motor de detección de anomalías 
+basado en media móvil ponderada exponencialmente con Z-Score adaptativo 
+~\cite{hunter1986ewma}, capaz de construir un perfil individual por 
+dispositivo sin recurrir a umbrales fijos ni a modelos de aprendizaje 
+automático externos.
+
+El aporte del proyecto no reside en la introducción de una técnica 
+aislada, sino en la integración de captura distribuida, procesamiento 
+contextualizado, inventario dinámico de activos y acceso móvil fuera 
+de una arquitectura unificada, orientada a redes de pequeña y mediana 
+escala donde las alternativas comerciales resultan económicamente 
+inviables o operativamente sobredimensionadas. El desarrollo articula 
+conocimientos en redes de datos, seguridad informática, ingeniería de 
+software y desarrollo móvil, consistente con la naturaleza integradora 
+del proyecto académico-investigativo en el que se enmarca.

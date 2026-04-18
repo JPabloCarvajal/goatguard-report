@@ -1,0 +1,114 @@
+\section{Resultados}
+~\label{sec:resultados}
+
+La validación del sistema se realizó en un entorno controlado 
+montado a partir de una red local de catorce nodos: doce endpoints 
+con el sensor de captura instalado, un servidor central que aloja 
+el pipeline de análisis, la API y la base de datos 
+contenedorizada, y un dispositivo móvil con la aplicación 
+conectado a la red privada Tailscale. La evaluación se organizó en 
+torno a tres ejes que responden de forma directa a los objetivos 
+específicos del proyecto: el rendimiento del sistema bajo carga 
+operativa (Sección~\ref{subsec:res-rendimiento}), el comportamiento 
+del motor de detección de anomalías frente a eventos inducidos 
+(Sección~\ref{subsec:res-motor}), y la verificación funcional 
+extremo a extremo desde los sensores hasta la aplicación móvil 
+(Sección~\ref{subsec:res-e2e}).
+
+\subsection{Rendimiento del sistema bajo carga operativa}
+~\label{subsec:res-rendimiento}
+
+La primera serie de mediciones buscó caracterizar la huella del 
+sistema en régimen de operación normal. Se instrumentaron los tres 
+componentes principales durante diez minutos de operación 
+continuada con los doce sensores conectados simultáneamente y con 
+ciclos de análisis activos, registrando muestras cada cinco 
+segundos sobre CPU, memoria residente, hilos activos y tráfico de 
+red. La Tabla~\ref{tab:rendimiento} consolida los resultados 
+principales.
+
+\begin{table}[ht]
+\centering
+\caption{Consumo de recursos durante la validación del sistema. Se reportan valores promedio y máximo observados sobre 120 muestras por componente.}
+~\label{tab:rendimiento}
+\small
+\begin{tabular}{@{}lrr@{}}
+\toprule
+\textbf{Componente} & \textbf{Promedio} & \textbf{Máximo} \\
+\midrule
+\multicolumn{3}{l}{\textit{Sensor de captura (por endpoint)}} \\
+\quad CPU            & 2{,}43 \% & 2{,}70 \% \\
+\quad RAM residente  & 94{,}54 MB & 98{,}68 MB \\
+\quad Hilos activos  & 4 & 4 \\
+\quad Tráfico saliente & 4{,}62 KB/s & --- \\
+\midrule
+\multicolumn{3}{l}{\textit{Motor de análisis (servidor central)}} \\
+\quad CPU            & 7{,}9 \% & 9{,}1 \% \\
+\quad RAM residente  & 156{,}3 MB & 184{,}2 MB \\
+\quad Hilos activos  & 22 & 28 \\
+\midrule
+\multicolumn{3}{l}{\textit{API REST y WebSocket (servidor central)}} \\
+\quad CPU            & 0{,}20 \% & 0{,}21 \% \\
+\quad RAM residente  & 70{,}1 MB & 88{,}2 MB \\
+\quad Hilos activos  & 1 & 1 \\
+\midrule
+\multicolumn{3}{l}{\textit{Base de datos PostgreSQL (contenedor)}} \\
+\quad CPU            & 1{,}4 \% & 3{,}1 \% \\
+\quad RAM residente  & 58{,}7 MB & 64{,}1 MB \\
+\quad Escritura disco (10 min) & --- & 95 MB \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Tres observaciones emergen de estos valores. La primera concierne 
+al sensor de captura: su huella permanece por debajo de 100~MB de 
+memoria residente y por debajo del 3~\% de CPU en el endpoint, lo 
+que satisface el requerimiento no funcional de bajo impacto que 
+condicionó el diseño del módulo de captura y la decisión de 
+sanitizar el tráfico en origen. La constancia del número de hilos 
+a lo largo de las 120~muestras confirma que el modelo 
+productor-consumidor descrito en la Sección~\ref{subsec:sensor} 
+opera sin fugas ni hilos huérfanos.
+
+La segunda observación refiere a la eficiencia de la sanitización 
+dinámica. Durante los diez minutos de medición sobre un endpoint 
+representativo, el sensor observó 7{,}60~MB de tráfico entrante a 
+la interfaz de red y transmitió 2{,}71~MB al servidor central, lo 
+que corresponde a una reducción del volumen transmitido del 
+64~\% respecto al observado. Esta cifra confirma 
+cuantitativamente que el recorte a 96~bytes para tráfico genérico 
+y 300~bytes para DNS y TLS preserva la información diagnóstica 
+necesaria al tiempo que descarta los payloads sensibles, tal como 
+se justificó en el marco legal de la Sección~\ref{sec:marco-legal}.
+
+La tercera observación concierne al margen de recursos del 
+servidor central. La carga combinada del motor, la API y la base 
+de datos se mantuvo por debajo del 10~\% de CPU y no superó 
+350~MB de memoria combinada en ningún momento de la medición. 
+Este margen sustancial respalda la decisión arquitectónica de 
+separar el pipeline de procesamiento de la capa de exposición como 
+procesos independientes comunicados mediante el patrón Shared 
+Database: ambos procesos disponen de recursos holgados para 
+absorber picos de carga sin interferirse mutuamente.
+
+\subsection{Comportamiento del motor de detección de anomalías}
+~\label{subsec:res-motor}
+
+[TODO — esta subsección requiere:
+  (a) inducir una anomalía real en el sistema durante su operación,
+  (b) registrar el timestamp de inducción y el de detección,
+  (c) capturar el valor de |Z| reportado,
+  (d) tomar screenshot de la alerta recibida en la app.
+Redactar esta subsección una vez se ejecute el experimento.]
+
+\subsection{Verificación funcional extremo a extremo}
+~\label{subsec:res-e2e}
+
+[TODO — esta subsección requiere:
+  (a) screenshots de la app móvil: login, dashboard, inventario,
+      detalle de dispositivo, lista de alertas, notificación push,
+  (b) captura del sistema operando desde una red distinta a la LAN
+      monitoreada (demostrando acceso remoto vía Tailscale),
+  (c) opcionalmente, una secuencia de capturas mostrando el flujo
+      completo desde el evento hasta la notificación.
+Redactar esta subsección una vez se tomen las capturas.]

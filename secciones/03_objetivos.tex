@@ -1,0 +1,47 @@
+\section{Objetivos}
+~\label{sec:objetivos}
+
+Los objetivos del proyecto se formulan siguiendo las fases del ciclo 
+de vida del desarrollo de software, de manera que cada uno corresponde 
+a una etapa específica del proceso: diseño, implementación, validación 
+y despliegue. Esta correspondencia permite trazar el avance del 
+proyecto frente a los hitos metodológicos adoptados.
+
+\subsection{Objetivo general}
+
+Desarrollar un sistema de monitoreo de tráfico de red local mediante 
+el diseño, implementación e integración de sensores de captura 
+distribuida, un backend de análisis centralizado y una aplicación 
+móvil, con el fin de proporcionar visibilidad continua sobre el 
+comportamiento del tráfico y el estado de los activos conectados a la 
+red de forma independiente de la ubicación física del administrador.
+
+\subsection{Objetivos específicos}
+
+\begin{itemize}
+    \item Diseñar la arquitectura del sistema de monitoreo, compuesta 
+    por sensores de captura en endpoints, un servidor colector, un 
+    motor de análisis y una aplicación móvil, mediante la definición 
+    de los flujos de datos, protocolos de comunicación y estructuras 
+    de almacenamiento, con el fin de establecer la base técnica sobre 
+    la cual se construirán los componentes del sistema.
+
+    \item Implementar los sensores de captura, el motor de análisis 
+    con su inventario dinámico de activos y la aplicación móvil, 
+    mediante la construcción e integración de cada componente según 
+    la arquitectura diseñada, con el fin de recolectar el tráfico de 
+    los endpoints, transformarlo en métricas contextualizadas y 
+    presentarlas al administrador junto con notificaciones ante 
+    comportamientos de tráfico inusuales.
+
+    \item Validar el funcionamiento del sistema mediante la ejecución 
+    de pruebas sobre los módulos de captura, análisis y visualización, 
+    con el fin de verificar que los datos fluyan correctamente desde 
+    los sensores hasta la aplicación móvil y que la información 
+    presentada sea consistente con el tráfico real de la red.
+
+    \item Desplegar el sistema mediante pipelines de integración y 
+    entrega continua, con el fin de facilitar la publicación de la 
+    aplicación móvil y la puesta en operación del backend en un 
+    entorno funcional.
+\end{itemize}

@@ -1,0 +1,333 @@
+\section{Marco teórico}
+~\label{sec:marco-teorico}
+
+\subsection{Modelo OSI y arquitectura TCP/IP}
+
+El diseño y operación de sistemas de monitoreo de red se sostienen 
+sobre dos modelos de referencia que describen la comunicación entre 
+dispositivos de forma estratificada: el modelo OSI de siete capas 
+propuesto por la Organización Internacional de Normalización 
+~\cite{iso7498}, y la arquitectura TCP/IP de cuatro capas que refleja 
+la implementación práctica de la suite de protocolos de Internet 
+~\cite{forouzan2006transmision}. Ambos modelos abstraen la complejidad 
+de las comunicaciones mediante la separación de responsabilidades: 
+cada capa ofrece un servicio específico a la capa inmediatamente 
+superior y se apoya en los servicios de la capa inmediatamente 
+inferior, lo cual permite que los componentes de un sistema 
+evolucionen de forma independiente siempre que respeten las 
+interfaces entre capas~\cite{kurose2010redes}.
+
+Las capas inferiores determinan los mecanismos sobre los cuales opera 
+GOATGuard. La capa de enlace de datos (Capa 2) define la estructura 
+de las tramas Ethernet~\cite{ieee8023} y las direcciones MAC, que 
+permiten la identificación de dispositivos a nivel físico dentro del 
+segmento local; esta capa soporta el descubrimiento de activos 
+mediante el protocolo ARP~\cite{rfc826}. La capa de red (Capa 3) 
+define las direcciones IP y los mecanismos de enrutamiento; sobre 
+esta capa opera el protocolo ICMP~\cite{rfc792} empleado en el 
+sondeo de salud del enlace hacia el proveedor de servicios. La capa 
+de transporte (Capa 4) proporciona los dos protocolos que estructuran 
+el transporte dual del sistema: TCP~\cite{rfc793} para la entrega 
+confiable y ordenada del tráfico capturado, y UDP~\cite{rfc768} para 
+la transmisión de métricas y señales de disponibilidad. Finalmente, 
+la capa de aplicación (Capa 7) aloja los protocolos DNS 
+~\cite{rfc1035}, HTTP~\cite{rfc9110} y los intercambios TLS 
+~\cite{rfc8446} observados durante la captura, cuya inspección 
+alimenta el análisis de flujos.
+
+Aunque los dos modelos difieren en el número de capas, las funciones 
+relevantes para este trabajo coinciden en ambos. Esto permite 
+expresar las decisiones de diseño en términos de capas sin ambigüedad 
+y asociar cada componente del sistema a una responsabilidad 
+específica dentro del stack de comunicaciones~\cite{kurose2010redes}.
+
+\subsection{Estructura de un paquete de red}
+
+Un paquete observado en una interfaz Ethernet sigue un esquema de 
+encapsulación anidada en el que cada capa antepone sus propios 
+encabezados al contenido recibido de la capa superior 
+~\cite{forouzan2006transmision}. En la base se encuentra el encabezado 
+Ethernet de catorce bytes~\cite{ieee8023}, que incluye las 
+direcciones MAC de origen y destino y el campo EtherType que indica 
+el protocolo de la capa siguiente. A continuación aparece el 
+encabezado IP de veinte bytes en su versión mínima, que contiene las 
+direcciones IP de origen y destino, el identificador de protocolo de 
+transporte, el TTL y el checksum de cabecera. Por último se ubica el 
+encabezado de transporte: veinte bytes para TCP, con números de 
+secuencia y acuse, tamaño de ventana y banderas de control, u ocho 
+bytes para UDP, con puertos y longitud del datagrama 
+~\cite{stevens2004unix}.
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=\columnwidth]{paquete_red.png}
+\caption{Estructura simplificada de un paquete de red.}
+~\label{fig:paquete-red}
+\end{figure}
+
+Este conjunto de encabezados, aproximadamente cincuenta y cuatro 
+bytes, concentra la totalidad de la información necesaria para 
+reconstruir flujos y extraer métricas de comportamiento sin recurrir 
+al contenido del payload. Las direcciones MAC identifican emisor y 
+receptor dentro del segmento local; las direcciones IP, junto con 
+los puertos y el protocolo de transporte, conforman la tupla de 
+cinco elementos que define cada flujo de comunicación 
+~\cite{kurose2010redes}; las banderas TCP permiten determinar el 
+ciclo de vida de una conexión y detectar retransmisiones 
+~\cite{rfc793}. El payload de aplicación, por el contrario, puede 
+contener información sensible como credenciales, contenido de 
+comunicaciones o datos personales, y su captura integral 
+comprometería la confidencialidad de los usuarios monitoreados.
+
+Un segundo aspecto relevante es el orden de los bytes en la 
+transmisión. Los encabezados de los protocolos de red se representan 
+en network byte order, que corresponde a la convención big-endian: 
+el byte más significativo se transmite primero~\cite{rfc793}. Los 
+sistemas operativos sobre arquitecturas x86 almacenan los datos en 
+little-endian, por lo que la serialización y deserialización de 
+campos numéricos requiere conversiones explícitas para garantizar la 
+interoperabilidad entre emisores y receptores independientemente de 
+la arquitectura subyacente~\cite{stevens2004unix}.
+
+Esta estructura justifica técnicamente la estrategia de sanitización 
+adoptada por los sensores de captura: un recorte de noventa y seis 
+bytes preserva los encabezados de las tres capas inferiores con 
+margen para las opciones TCP, mientras que un recorte extendido a 
+trescientos bytes para tráfico dirigido a los puertos asociados a 
+DNS y HTTPS permite incluir el dominio consultado y la indicación de 
+nombre de servidor del handshake TLS~\cite{rfc8446}, elementos con 
+valor diagnóstico que no comprometen el contenido de las 
+comunicaciones.
+
+\subsection{Monitoreo de redes: captura centralizada vs distribuida}
+
+Los enfoques tradicionales de monitoreo en redes de área local 
+operan desde un único punto de observación, típicamente un servidor 
+que recibe una copia del tráfico mediante un puerto mirror en el 
+switch o una interfaz configurada para escuchar el segmento 
+~\cite{kurose2010redes}. Sobre este modelo pasivo se articulan el 
+monitoreo activo, que genera tráfico de prueba para verificar 
+conectividad~\cite{forouzan2006transmision}, y herramientas de uso 
+extendido como Wireshark para análisis de paquetes, Nmap para 
+descubrimiento de hosts~\cite{lyon2009nmap}, Snort para detección de 
+intrusos~\cite{roesch1999snort}, y plataformas empresariales como 
+Zabbix o PRTG para consolidación de métricas. La limitación 
+estructural de este enfoque es la pérdida de granularidad: la 
+captura agregada impide atribuir un patrón anómalo al endpoint que 
+lo origina, y su dependencia de consolas fijas, sumada al 
+licenciamiento orientado a grandes infraestructuras, lo hace inviable 
+en redes de pequeña escala.
+
+La alternativa distribuida despliega procesos ligeros en cada 
+endpoint que capturan el tráfico localmente y lo reportan a un 
+servidor central~\cite{paxson1999zeek}. Esta topología preserva la 
+granularidad por dispositivo y habilita la correlación directa entre 
+una anomalía y su equipo responsable, a costa de instalar un 
+componente en cada host y diseñar un canal de transporte que no 
+sature la red ni degrade el rendimiento del endpoint. Estas 
+tensiones de diseño orientan las decisiones arquitectónicas 
+descritas en la Sección~\ref{sec:desarrollo}.
+
+El modelo distribuido cuenta con un antecedente formal en la 
+arquitectura IPFIX (IP Flow Information Export) especificada por la 
+IETF en la RFC 5470~\cite{rfc5470}. Este documento establece un 
+modelo de referencia en el que uno o varios \textit{observation 
+points} dentro de un \textit{IPFIX device} alimentan un conjunto de 
+\textit{metering processes} que a su vez entregan sus datos a un 
+\textit{exporting process}, el cual los transmite a un 
+\textit{collector} encargado de la recepción, procesamiento y 
+almacenamiento (Fig.~\ref{fig:ipfix}). La correspondencia con 
+GOATGuard es directa: los sensores de captura cumplen el rol de 
+observation point y metering process sobre cada endpoint, mientras 
+que el backend actúa como collector que consolida, procesa y 
+persiste los datos reportados. Esta correspondencia no implica 
+adoptar el protocolo IPFIX como tal sino reconocer que la 
+descomposición funcional del sistema se apoya en un modelo de 
+referencia ya estandarizado.
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=\columnwidth]{ipfix_rfc5470.png}
+\caption{Modelo de referencia IPFIX definido en la RFC 5470~\cite{rfc5470}. La arquitectura de GOATGuard mapea sus sensores al rol de observation point y metering process, y el backend al rol de collector.}
+~\label{fig:ipfix}
+\end{figure}
+
+\subsection{Descubrimiento y clasificación de activos}
+
+El descubrimiento de dispositivos parte del escaneo activo: 
+solicitudes ARP~\cite{rfc826} para resolver direcciones IP y MAC 
+dentro del segmento de enlace, sondeos ICMP~\cite{rfc792} para 
+confirmar alcanzabilidad, y pruebas a puertos TCP/UDP específicos 
+para revelar servicios expuestos; herramientas como Nmap combinan 
+estas técnicas en un inventario inicial~\cite{lyon2009nmap}. Dos 
+limitaciones acotan este enfoque. Primero, la información recolectada 
+se reduce a presencia y datos técnicos básicos, sin distinguir entre 
+una estación de trabajo, una impresora, un dispositivo IoT o un 
+equipo personal no autorizado. Segundo, los escaneos se ejecutan de 
+forma periódica y no continua, dejando ventanas durante las cuales 
+un dispositivo puede conectarse sin ser detectado hasta el siguiente 
+ciclo.
+
+La técnica de network fingerprinting responde parcialmente a la 
+primera limitación combinando señales de múltiples capas del stack 
+~\cite{lippmann2003fingerprint}: el prefijo OUI de la MAC identifica 
+al fabricante, los puertos abiertos y banners de servicios revelan 
+el sistema operativo y las aplicaciones, y el patrón de 
+comunicación, como la frecuencia de consultas DNS o los destinos 
+recurrentes, permite inferir el rol operativo del dispositivo. La 
+combinación de estos indicadores habilita la transición desde un 
+listado plano hacia un inventario clasificado. El sistema propuesto 
+integra el descubrimiento ARP ejecutado por los sensores con el 
+registro explícito de los endpoints instrumentados, manteniendo 
+trazabilidad tanto de los dispositivos bajo control directo como de 
+los observados pasivamente en el segmento.
+
+\subsection{Detección de anomalías por métodos estadísticos adaptativos}
+
+La detección de anomalías en series temporales consiste en 
+identificar observaciones que se desvían significativamente del 
+comportamiento esperado dado el historial previo de la misma 
+variable~\cite{chandola2009anomaly}. En el contexto del monitoreo 
+de infraestructura, cada métrica asociada a un dispositivo produce 
+una secuencia de valores en el tiempo cuya distribución no es 
+conocida a priori y varía entre dispositivos: una estación de 
+desarrollo puede presentar un consumo de CPU sostenido del sesenta 
+por ciento durante compilaciones, mientras que un servidor de 
+archivos puede operar establemente por debajo del diez por ciento. 
+Un método de detección útil debe construir un perfil individual 
+para cada dispositivo y métrica, adaptarse a cambios legítimos en 
+el comportamiento, y operar en línea sin requerir un conjunto de 
+entrenamiento previo~\cite{chandola2009anomaly}.
+
+Los umbrales fijos constituyen el enfoque más simple pero resultan 
+inadecuados para esta tarea: un límite absoluto definido globalmente 
+ignora el perfil particular de cada dispositivo y produce falsos 
+positivos en los que operan legítimamente cerca del umbral, al 
+tiempo que pierde anomalías relativas en dispositivos con líneas 
+base bajas~\cite{montgomery2013spc}. El cálculo de Z-Score sobre la 
+media aritmética acumulada corrige parcialmente este problema al 
+normalizar por la desviación típica observada, pero la media 
+acumulada pondera por igual todas las observaciones históricas y 
+tarda horas en converger cuando el comportamiento del dispositivo 
+cambia de forma sostenida, lo que genera falsas alarmas durante el 
+periodo de adaptación.
+
+La media móvil ponderada exponencialmente (Exponentially Weighted 
+Moving Average, EWMA) propuesta originalmente por Roberts 
+~\cite{roberts1959ewma} y consolidada como herramienta de control 
+estadístico por Hunter~\cite{hunter1986ewma} resuelve este problema 
+asignando pesos que decrecen geométricamente con la antigüedad de 
+cada observación. Lucas y Saccucci~\cite{lucas1990ewma} ampliaron 
+posteriormente este esquema con el análisis de sus propiedades de 
+detección y con extensiones para señales con varianza variable. El 
+baseline se actualiza en cada ciclo mediante la recurrencia
+\begin{equation}
+\mu_t = \alpha \cdot x_t + (1-\alpha) \cdot \mu_{t-1},
+\label{eq:ewma}
+\end{equation}
+donde $\mu_t$ es el baseline estimado en el ciclo $t$, $x_t$ la 
+observación actual, y $\alpha \in (0,1)$ el factor de suavizado que 
+determina la velocidad de adaptación del estimador. Un valor de 
+$\alpha$ cercano a uno produce un baseline altamente reactivo al 
+último dato, mientras que un valor cercano a cero produce un 
+baseline estable pero lento para adaptarse a cambios reales. El 
+peso que una observación retiene tras $k$ ciclos es 
+$\alpha \cdot (1-\alpha)^k$, lo que define una memoria efectiva 
+finita a partir de la cual los datos antiguos se consideran 
+olvidados~\cite{lucas1990ewma}.
+
+La varianza se estima con el mismo principio exponencial 
+(Exponentially Weighted Moving Variance, EWMV) mediante
+\begin{equation}
+{\sigma^2_t = (1-\alpha) \cdot \left[\sigma^2_{t-1} + \alpha \cdot (x_t - \mu_{t-1})^2\right],}
+\label{eq:ewmv}
+\end{equation}
+donde $(x_t - \mu_{t-1})^2$ cuantifica la discrepancia entre la 
+observación actual y el baseline anterior. Con el baseline y la 
+varianza adaptativos, el Z-Score se calcula como
+\begin{equation}
+Z_t = \frac{x_t - \mu_{t-1}}{\sqrt{\sigma^2_{t-1}}},
+\label{eq:zscore}
+\end{equation}
+contra el baseline y varianza del ciclo anterior, antes de 
+actualizarlos con la observación actual. Este orden preserva la 
+sensibilidad del estimador ante anomalías: si los estadísticos se 
+actualizaran primero, la anomalía se absorbería parcialmente en el 
+baseline antes de ser evaluada~\cite{montgomery2013spc}.
+
+Bajo el supuesto de distribución aproximadamente normal en 
+condiciones de operación estable, el Z-Score admite una 
+interpretación probabilística directa. La probabilidad de que una 
+observación produzca $|Z|>2$ bajo ese supuesto es 4.56\%, y la de 
+que supere $|Z|>3$ es 0.27\%, lo que permite asignar una medida de 
+rareza estadística a cada evaluación y establecer umbrales de 
+severidad con significado probabilístico explícito 
+~\cite{montgomery2013spc}.
+
+\subsection{Arquitecturas cliente-servidor y patrones de integración}
+
+La exposición de los datos procesados hacia la aplicación móvil se 
+apoya en el estilo arquitectónico REST (Representational State 
+Transfer) formulado por Fielding~\cite{fielding2000rest}. REST 
+establece un conjunto de restricciones para sistemas distribuidos 
+basados en HTTP, entre las cuales destacan la separación entre 
+cliente y servidor, la ausencia de estado de sesión en el servidor, 
+la identificación de recursos mediante URIs y la manipulación de 
+esos recursos a través de los métodos estándar del protocolo HTTP 
+~\cite{rfc9110}. La restricción \textit{stateless} implica que cada 
+petición del cliente contiene toda la información necesaria para 
+ser procesada, lo cual simplifica la escalabilidad horizontal del 
+servidor pero requiere un mecanismo alternativo para mantener la 
+autenticación del usuario entre peticiones, función que típicamente 
+cumplen los tokens JWT~\cite{rfc7519} adjuntados en cada petición.
+
+El modelo de petición y respuesta de HTTP es eficaz para consultas 
+puntuales, pero presenta limitaciones en escenarios de monitoreo 
+continuo donde el estado del sistema evoluciona de forma constante 
+y el cliente necesita reflejar esos cambios sin retrasos 
+significativos. El polling periódico, en el que el cliente repite 
+una petición cada cierto intervalo, introduce sobrecarga de 
+encabezados HTTP redundantes, consumo innecesario de ancho de banda 
+y latencia variable entre la generación de un dato en el servidor y 
+su visualización en el cliente~\cite{rfc9110}. El protocolo 
+WebSocket~\cite{rfc6455} atiende este escenario mediante un canal 
+bidireccional persistente establecido sobre una única conexión TCP 
+tras un handshake inicial de actualización desde HTTP;@una vez 
+abierto, tanto servidor como cliente pueden enviar mensajes en 
+cualquier momento sin la sobrecarga de encabezados de HTTP, lo que 
+habilita la notificación inmediata de eventos como alertas o 
+actualizaciones de estado.
+
+En sistemas compuestos por múltiples procesos que deben compartir 
+información, el patrón \textit{Shared Database} descrito por Hohpe 
+y Woolf~\cite{hohpe2003eip} propone una base de datos común como 
+punto de acoplamiento entre procesos independientes. Cada proceso 
+opera sobre su propio ciclo de vida, con sus propios recursos y 
+perfil de carga, y accede a la base de datos para leer los datos 
+que otros procesos produjeron o para escribir los suyos. Este 
+patrón resulta apropiado cuando los procesos tienen perfiles de 
+ejecución heterogéneos, ya que el aislamiento a nivel de proceso 
+del sistema operativo garantiza que un fallo en uno de ellos no 
+afecta la operación de los demás~\cite{silberschatz2018os}, a 
+diferencia de una arquitectura monolítica en la que todas las 
+responsabilidades comparten el mismo espacio de ejecución.
+
+La organización interna de cada proceso se apoya en patrones de 
+diseño clásicos documentados por Gamma et al.~\cite{gof1994}. Los 
+patrones relevantes para este trabajo incluyen Strategy, que 
+desacopla un algoritmo de su contexto de uso mediante una interfaz 
+común; Mediator, que centraliza la comunicación entre componentes 
+en un orquestador que conoce a todos los participantes y evita el 
+acoplamiento directo entre ellos; y la inversión de control 
+implementada mediante callbacks, que permite a un módulo invocar 
+comportamiento definido externamente sin conocer los detalles de 
+implementación~\cite{gof1994}. A estos se suman patrones 
+específicos de sistemas concurrentes documentados por Schmidt et 
+al.~\cite{schmidt2000posa2}, como Thread-per-Client, en el cual 
+cada conexión entrante se atiende en un hilo dedicado para aislar 
+los fallos individuales; y el patrón Productor-Consumidor descrito 
+por Buschmann et al.~\cite{buschmann1996posa}, que coordina la 
+transferencia de datos entre dos hilos con velocidades distintas 
+mediante un buffer compartido protegido por exclusión mutua. La 
+aplicación concreta de estos patrones se describe en la Sección 
+~\ref{sec:desarrollo}.

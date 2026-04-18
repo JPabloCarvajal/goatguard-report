@@ -1,0 +1,176 @@
+\section{Discusión}
+~\label{sec:discusion}
+
+Los resultados presentados en la Sección~\ref{sec:resultados} 
+confirman que el sistema opera dentro de los márgenes previstos 
+por el diseño y satisface los requerimientos funcionales y no 
+funcionales para los que fue construido. Sin embargo, una lectura 
+útil del trabajo exige ir más allá de la verificación de 
+cumplimiento: obliga a examinar las tensiones que atravesaron las 
+decisiones arquitectónicas, los márgenes entre lo que el sistema 
+logra y lo que queda fuera de su alcance, y la posición del 
+proyecto dentro del espacio más amplio del monitoreo de red en 
+redes \@. Esta sección organiza esa reflexión en cuatro ejes.
+
+\subsection{Tensiones arquitectónicas y costos asumidos} 
+
+La captura distribuida a nivel de endpoint, que resuelve la 
+atribución de comportamiento por dispositivo identificada como 
+causa raíz C2, asume un costo operativo en donde cada endpoint debe alojar 
+un proceso adicional, el administrador pierde parte del control 
+centralizado característico de los modelos basados en port mirror, 
+y la fase de despliegue se multiplica por el número de 
+dispositivos. El modelo centralizado clásico evita ese costo a 
+cambio de perder precisamente la granularidad que justifica este 
+proyecto. La elección del modelo distribuido es coherente con el 
+objetivo general, pero el costo de despliegue no es trivial y se 
+vuelve más significativo conforme crece el tamaño de la red.
+
+La sanitización dinámica reduce el volumen transmitido y protege 
+la confidencialidad del payload, pero descarta información que 
+podría ser diagnóstica en escenarios específicos. El recorte a 
+96 o 300 bytes preserva las cabeceras y los campos diagnósticos 
+del nivel de aplicación para DNS y TLS, pero inhabilita cualquier 
+análisis que requiera inspección del payload completo, como la 
+detección de patrones de exfiltración codificados en HTTP o la 
+identificación de malware mediante firmas en el contenido. El 
+diseño asume este costo de forma consciente porque el proyecto se 
+orienta al monitoreo de comportamiento agregado, no a la 
+detección basada en firmas; sin embargo, al pasar del laboratorio 
+a un despliegue de producción, este límite debe evaluarse frente 
+a los escenarios específicos que el operador necesite cubrir.
+
+La separación del pipeline y la API como procesos independientes 
+comunicados por Shared Database aísla fallos y permite 
+escalabilidad independiente, pero introduce latencia adicional 
+entre la generación de una métrica y su disponibilidad para la 
+consulta móvil: el dato atraviesa la escritura a PostgreSQL, el 
+mecanismo \texttt{LISTEN/NOTIFY} y el handler WebSocket antes de 
+llegar al cliente. La alternativa de acoplamiento directo por 
+memoria compartida sería más rápida, pero propagaría fallos del 
+pipeline a la capa de exposición, con consecuencias más severas 
+para la disponibilidad del sistema desde la perspectiva del 
+administrador. Para un sistema de monitoreo donde un retardo de 
+segundos es aceptable pero una caída no lo es, el intercambio 
+parece correcto; para un sistema de respuesta en tiempo real, 
+probablemente no lo sería.
+
+\subsection{Detección de anomalías: poder y límites}
+
+El motor basado en EWMA + Z-Score adaptativo con filtro de 
+persistencia resuelve limitaciones concretas de los enfoques más 
+simples. Los umbrales fijos no distinguen el perfil individual de 
+cada dispositivo y fracasan simultáneamente en dos direcciones 
+opuestas: generan falsas alarmas en dispositivos que operan 
+legítimamente cerca del umbral, y pierden anomalías en 
+dispositivos cuyo comportamiento normal está lejos del umbral. El 
+Z-Score con media acumulada incorpora el perfil individual pero 
+tarda horas en adaptarse a cambios legítimos de régimen, lo que 
+produce avalanchas de falsas alarmas durante los períodos de 
+convergencia. El método adoptado resuelve ambas limitaciones a 
+cambio de una complejidad modesta: dos variables de estado por 
+par dispositivo-métrica, complejidad temporal constante por 
+ciclo, y un ajuste único del factor de suavizado.
+
+La discusión anterior, sin embargo, se queda corta si no aborda lo 
+que el motor no puede detectar. Una anomalía que respete los 
+rangos individuales de cada métrica pero cuya combinación sea 
+inusual permanecerá invisible para un detector que evalúa cada 
+métrica de forma independiente. Por ejemplo, un incremento 
+moderado de \texttt{bandwidth\_out} junto con un incremento 
+moderado de \texttt{unique\_destinations} y una caída simultánea 
+de \texttt{dns\_response\_time} es un patrón que, tomadas las 
+métricas por separado, no superaría el umbral de severidad, pero 
+colectivamente podría indicar actividad de escaneo previo a un 
+ataque. Detectar este tipo de correlación requiere un enfoque 
+multivariado que excede el alcance del motor implementado.
+
+Análogamente, las anomalías de secuencia, donde ningún valor 
+individual es anómalo pero sí lo es el patrón temporal, tampoco 
+son capturadas por el detector actual. Un tráfico sostenido durante 
+seis horas fuera de horario laboral puede estar compuesto por 
+valores individualmente normales que el baseline EWMA absorbe como 
+la nueva línea base; la anomalía reside en el contexto temporal 
+que el sistema actual no modela. Chandola et al.~\cite{chandola2009anomaly} 
+denominan a estas tres categorías anomalías puntuales, 
+contextuales y colectivas; el motor cubre las dos primeras y 
+declara abierta la tercera como trabajo futuro.
+
+\subsection{Validación frente a objetivos y contribución 
+disciplinar}
+
+El proyecto satisface sus cuatro objetivos específicos en un 
+grado variable que conviene explicitar. El diseño arquitectónico 
+(OE1) produjo una solución coherente con el estado del arte del 
+monitoreo distribuido: la correspondencia entre los sensores y los 
+\textit{observation points} de la RFC 5470, entre el backend y el 
+\textit{collector} de la misma RFC\@, y entre el flujo interno y el 
+patrón \textit{Pipes and Filters}~\cite{buschmann1996posa} sitúa 
+el trabajo sobre referentes establecidos en lugar de inventar una 
+organización ad hoc. La implementación (OE2) produjo artefactos 
+ejecutables para los tres componentes principales, respaldados por 
+una batería de pruebas automatizadas que valida las rutas críticas 
+del sistema. La validación funcional (OE3) se cubrió mediante la 
+ejecución de escenarios controlados con detección efectiva de 
+anomalías inducidas. El despliegue mediante pipelines de 
+integración continua (OE4) quedó operativo a nivel de backend y 
+de la imagen móvil, si bien la publicación del APK firmado en 
+tiendas formales no se cubrió por estar fuera del alcance 
+académico del proyecto.
+
+La contribución del trabajo no reside en la originalidad de 
+ninguna técnica aislada. EWMA data de 1959~\cite{roberts1959ewma}, 
+el patrón Thread-per-Client está documentado desde hace 
+décadas~\cite{schmidt2000posa2}, y la arquitectura 
+sensor-colector se formalizó en la RFC 5470 hace quince años. La 
+contribución reside, en cambio, en la integración coherente de 
+estos elementos en un sistema funcional acoplado a una aplicación 
+móvil, bajo las restricciones de un proyecto integrador académico 
+y con una documentación rastreable de cada decisión. El valor del 
+trabajo es la demostración de que los componentes disponibles del 
+estado del arte, combinados con criterio de ingeniería, producen 
+una solución operativa para un problema que en la práctica 
+docente suele abordarse con herramientas comerciales de costo 
+considerable.
+
+\subsection{Gap entre laboratorio y producción}
+
+Es útil cerrar la discusión reconociendo la distancia entre un 
+sistema que funciona en el entorno de validación descrito en la 
+Sección~\ref{sec:resultados} y un sistema listo para un despliegue 
+operativo real en una organización. Tres aspectos marcan esa 
+distancia.
+
+El primero es la sensibilidad al ajuste de parámetros. El factor 
+de suavizado del EWMA, los umbrales de severidad, los parámetros 
+del filtro de persistencia y los valores mínimos de varianza son 
+hiperparámetros que en el presente trabajo se fijaron mediante 
+justificación teórica y validación empírica sobre escenarios 
+acotados. Un despliegue en producción exigiría una fase de ajuste 
+específico al perfil de tráfico de la red a monitorear, 
+posiblemente automatizado mediante optimización sobre datos 
+históricos, que el proyecto no abordó.
+
+El segundo es la superficie de ataque del propio sistema. El 
+sensor de captura ejecuta con privilegios elevados para acceder a 
+la interfaz de red en modo promiscuo, el backend ingiere datos 
+binarios arbitrarios de la red, y la API expone endpoints 
+autenticados por JWT\@. Cada una de estas puertas es un vector 
+potencial de ataque que requeriría, para un despliegue real, 
+análisis de seguridad especializado, endurecimiento de las 
+configuraciones por defecto, auditoría del código para 
+vulnerabilidades conocidas y quizá un programa de revelación 
+coordinada de vulnerabilidades. El presente trabajo incorporó 
+medidas defensivas razonables (aislación de Zeek en contenedor, 
+firma criptográfica de tokens, cifrado del canal), pero no se 
+sometió a una evaluación de seguridad formal.
+
+El tercero es la operabilidad a largo plazo. Un sistema en 
+producción requiere monitoreo de sí mismo (observabilidad), 
+procedimientos documentados de recuperación ante fallos, 
+políticas de retención y respaldo de datos, y capacidad de 
+actualización sin interrupciones. El proyecto produjo un sistema 
+funcional pero no un producto operable en ese sentido más amplio. 
+La distancia entre un prototipo académico validado y un producto 
+desplegable no es una objeción al trabajo, sino una descripción 
+realista de su alcance.

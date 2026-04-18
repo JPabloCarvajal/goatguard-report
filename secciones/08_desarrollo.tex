@@ -1,0 +1,829 @@
+\section{Diseño y desarrollo del producto}
+~\label{sec:desarrollo}
+
+La presente sección describe el diseño y la implementación del sistema 
+a partir de los requerimientos especificados, la arquitectura base 
+definida durante la fase de Elaboración, y las decisiones técnicas 
+adoptadas durante la fase de Construcción. La organización del 
+contenido sigue la descomposición natural del sistema: primero el 
+análisis de requerimientos (Sección~\ref{subsec:requerimientos}), 
+luego el diseño arquitectónico global (Sección 
+~\ref{subsec:arquitectura}), y a continuación la implementación de 
+cada componente en el orden en que se integran durante el ciclo de 
+vida del dato: el sensor de captura (Sección~\ref{subsec:sensor}), el 
+backend y su pipeline de análisis (Sección~\ref{subsec:backend}), el 
+motor de detección de anomalías (Sección~\ref{subsec:motor}), la capa 
+de exposición mediante API REST y WebSocket (Sección 
+~\ref{subsec:api}), y la infraestructura de integración y entrega 
+continua (Sección~\ref{subsec:cicd}).
+
+\subsection{Análisis y especificación de requerimientos}
+~\label{subsec:requerimientos}
+
+La especificación de requerimientos del sistema se documentó 
+siguiendo el estándar IEEE 830, con identificadores únicos, 
+prioridad de desarrollo, entradas y salidas, precondiciones, 
+postcondiciones y flujos básico y alternativo para cada requerimiento 
+funcional. El trabajo produjo 54 requerimientos funcionales (RF-01 a 
+RF-54) distribuidos en los cuatro módulos del sistema, y seis 
+categorías de requerimientos no funcionales que abarcan rendimiento, 
+seguridad, fiabilidad, disponibilidad, mantenibilidad y portabilidad.
+
+La Tabla~\ref{tab:rf-resumen} presenta la distribución de 
+requerimientos por módulo junto con una síntesis de las 
+responsabilidades cubiertas. La agrupación coincide con la 
+descomposición arquitectónica descrita en la Sección 
+~\ref{subsec:arquitectura} y permite trazar cada módulo a su conjunto 
+de requerimientos asociados.
+
+\begin{table}[ht]
+\centering
+\caption{Distribución de requerimientos funcionales por módulo del sistema.}
+~\label{tab:rf-resumen}
+\begin{tabular}{@{}p{2.3cm}cp{4cm}@{}}
+\toprule
+\textbf{Módulo} & \textbf{RF} & \textbf{Responsabilidades cubiertas} \\
+\midrule
+Sensor de captura & RF-01 a RF-05 & Captura de tráfico, métricas del endpoint, descubrimiento ARP, registro y consentimiento. \\[4pt]
+Backend y pipeline & RF-06 a RF-25 & Recepción y persistencia, análisis de flujos, cálculo de métricas contextualizadas, inventario de activos. \\[4pt]
+Motor de anomalías & RF-26 a RF-35 & Baselines por dispositivo, detección EWMA, filtro de persistencia, generación de alertas. \\[4pt]
+API y WebSocket & RF-36 a RF-45 & Autenticación, endpoints de consulta, canal de eventos en tiempo real, notificaciones. \\[4pt]
+Aplicación móvil & RF-46 a RF-54 & Login, dashboard, inventario, detalle de dispositivo, alertas, notificaciones push. \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Los requerimientos se priorizaron en tres niveles: \textit{Alta} para 
+aquellos cuya ausencia impide la operación básica del sistema, 
+\textit{Media} para los que amplían la utilidad sin ser 
+bloqueantes, y \textit{Baja} para los que representan mejoras 
+incrementales. Esta priorización orientó el orden de las iteraciones 
+de Construcción y permitió organizar la batería de pruebas para 
+cubrir primero las rutas críticas del sistema.
+
+\subsection{Diseño arquitectónico}
+~\label{subsec:arquitectura}
+
+La arquitectura del sistema se describe en tres niveles de 
+abstracción, siguiendo el modelo C4 de Simon Brown: contenedores, 
+componentes y despliegue. El nivel de contexto (actores externos) se 
+aborda implícitamente en la Sección~\ref{sec:alcance}, donde se 
+caracterizaron el administrador como único actor humano y los 
+endpoints como elementos de entrada al sistema.
+
+\subsubsection{Vista de contenedores y componentes}
+
+El sistema se descompone en tres subsistemas principales que se 
+comunican mediante canales bien definidos. El primero es el sensor 
+de captura, desplegado en cada endpoint monitoreado, que expone dos 
+interfaces hacia el backend: \texttt{IEndpointMetrics} para el envío 
+periódico de métricas del sistema operativo por UDP, e 
+\texttt{IPcapStream} para la transmisión continua de paquetes 
+sanitizados por TCP.@ El segundo es el backend centralizado, que 
+internamente se divide en cinco subsistemas de propósito específico 
+conectados mediante interfaces internas. El tercero es la aplicación 
+móvil, que consume las interfaces públicas del backend 
+(\texttt{IRestApi} e \texttt{IWebSocket}) para presentar información 
+al administrador.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\columnwidth]{diagrama_componentes.png}
+\caption{Vista de componentes del sistema (modelo C4 nivel 3). Se muestran los cinco subsistemas internos del backend, las interfaces que exponen y las dependencias entre ellos.}
+~\label{fig:componentes}
+\end{figure}
+
+La Fig.~\ref{fig:componentes} ilustra la estructura interna del 
+backend. El subsistema de recepción (\texttt{UDP Receiver} y 
+\texttt{TCP Receiver}) recibe los flujos provenientes de los 
+sensores y los entrega a los subsistemas de análisis y almacenamiento 
+intermedio. El subsistema de \textit{intake} rota los archivos PCAP 
+en ventanas temporales manejables y los pone a disposición del motor 
+de análisis mediante la interfaz \texttt{IRotatedPcap}. El subsistema 
+de análisis combina la sonda ISP y el motor de análisis principal, 
+que procesa los PCAP, genera las métricas contextualizadas y las 
+entrega al subsistema de gestión a través de la interfaz 
+\texttt{IProcessedData}. El subsistema de gestión consolida el 
+inventario de activos y la generación de alertas. Finalmente, el 
+subsistema de API, que agrupa el \texttt{Auth Manager}, el 
+\texttt{API Handler} y el \texttt{WebSocket Handler}, expone los 
+datos persistidos hacia la aplicación móvil. Todos los subsistemas 
+acceden a la base de datos PostgreSQL mediante la interfaz 
+\texttt{IRepository} expuesta por el subsistema \texttt{dbmanager}.
+
+Esta descomposición responde a dos decisiones arquitectónicas clave. 
+La primera es la separación del pipeline de procesamiento y la capa 
+de exposición como procesos independientes del sistema operativo, 
+comunicados exclusivamente a través de la base de datos compartida 
+~\cite{hohpe2003eip}. Esto permite que un fallo en el pipeline no 
+afecte la disponibilidad de la API para consultas móviles, y que 
+ambos procesos escalen sus recursos de forma independiente según su 
+perfil de carga~\cite{silberschatz2018os}. La segunda es el uso de 
+interfaces nombradas en el diagrama de componentes, que formalizan 
+los contratos entre subsistemas y permiten sustituir implementaciones 
+sin afectar al resto del sistema.
+
+\subsubsection{Vista de despliegue}
+
+\begin{figure*}[!t]
+\centering
+\includegraphics[width=0.95\textwidth]{diagrama_despliegue.png}
+\caption{Vista de despliegue del sistema. Los sensores transmiten a un servidor central contenedorizado que expone servicios al dispositivo móvil mediante una red privada Tailscale y al servicio de notificaciones push Firebase Cloud Messaging.}
+~\label{fig:diagrama_despliegue}
+\end{figure*}
+
+La Fig.~\ref{fig:diagrama_despliegue} presenta la disposición física del 
+sistema en su entorno de operación. Los sensores de captura se 
+ejecutan como artefactos \texttt{agente\_captura.py} sobre un runtime 
+Python 3.x en cada uno de los endpoints de la red local. El servidor 
+central, ubicado en la dirección estática 192.168.1.10, aloja tres 
+contenedores Docker que ejecutan de forma independiente: el motor de 
+pipeline (\texttt{goatguard\_motor.py}) en los puertos 9000 y 9001, 
+la API REST (\texttt{api\_goatguard.py}) en el puerto 8000, y el 
+servicio PostgreSQL 15 en el puerto 5432. La aplicación móvil, 
+empaquetada como \texttt{app\_goatguard.apk}, se ejecuta sobre 
+Android 10 o superior en el dispositivo del administrador.
+
+
+
+Dos decisiones de despliegue merecen mención explícita. La primera 
+es el uso de Tailscale como red privada virtual para conectar el 
+dispositivo móvil con el servidor central, lo cual permite al 
+administrador consultar el sistema desde fuera de la red local sin 
+exponer el servidor a Internet mediante una IP pública. La segunda 
+es la integración con Firebase Cloud Messaging para la entrega de 
+notificaciones push al dispositivo móvil cuando el motor de análisis 
+genera alertas que superan los umbrales de severidad.
+
+\subsubsection{Modelo de datos}
+
+La persistencia del sistema se organiza en torno a tres tipos 
+estructurales de entidades que responden a perfiles de acceso 
+distintos. Las entidades \textit{base} describen elementos 
+relativamente estáticos del dominio cuya información cambia con poca 
+frecuencia: una red, un dispositivo, un sensor registrado, un 
+usuario autenticado. Las entidades \textit{acumuladas} conservan el 
+histórico completo de las mediciones producidas por el motor de 
+análisis a lo largo del tiempo; cada ciclo del motor inserta una 
+nueva fila por métrica observada, y estas tablas crecen de forma 
+monótona hasta que un proceso de retención las recorta. Las 
+entidades \textit{sobreescritas} mantienen únicamente el valor más 
+reciente de cada métrica y se actualizan mediante operaciones 
+\texttt{UPSERT} que sustituyen la fila anterior por la nueva. La 
+Fig.~\ref{fig:er-tipologia} ilustra los tres tipos sobre las tablas 
+relacionadas con el monitoreo de una red.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\columnwidth]{er_tipologia.png}
+\caption{Tipología de entidades del modelo de datos: \textsc{Network} como entidad base, \textsc{Network\_Snapshot} como entidad acumulada que preserva el histórico, y \textsc{Network\_Current\_Metrics} como entidad sobreescrita que almacena únicamente la última observación.}
+~\label{fig:er-tipologia}
+\end{figure}
+
+Esta distinción responde a un compromiso entre la necesidad de 
+mantener un historial para el análisis retrospectivo y la 
+eficiencia de las consultas en tiempo real desde la aplicación 
+móvil. Las entidades acumuladas operan como tablas de series 
+temporales con inserciones continuas y lecturas analíticas 
+ocasionales; su tamaño crece linealmente con el tiempo y requiere 
+particionamiento y políticas de retención para mantenerse operativa. 
+Las entidades sobreescritas, en contraste, mantienen una sola fila 
+por dispositivo y se actualizan en cada ciclo, lo que permite al 
+cliente móvil consultar el estado actual de la red en tiempo 
+constante sin recorrer el histórico completo. El mismo patrón se 
+aplica a los dispositivos (\textsc{Device\_Current\_Metrics} vs 
+\textsc{Endpoint\_Snapshot}) y a los top talkers 
+(\textsc{Top\_Talker\_Current} vs \textsc{Top\_Talker}).
+
+El conjunto completo de entidades se agrupa en cuatro dominios 
+funcionales, como se aprecia en el diagrama completo del modelo 
+entidad-relación (Fig.~\ref{fig:er}, ubicada al final del 
+documento). El dominio de inventario comprende \textsc{Network}, 
+\textsc{Device} y \textsc{Agent}, que describen la estructura 
+estática de la red monitoreada. El dominio de mediciones alberga 
+las parejas acumulada y sobreescrita de cada tipo de métrica, junto 
+con la entidad \textsc{ML\_Prediction} que almacena las 
+clasificaciones producidas por el fingerprinting de tráfico. El 
+dominio de análisis registra la salida del motor de anomalías: 
+\textsc{Alert} para los eventos que superan los umbrales de 
+severidad, \textsc{Insight} para las observaciones contextuales 
+generadas durante el procesamiento, y \textsc{Top\_Talker} para la 
+identificación de los dispositivos de mayor consumo. El dominio de 
+autenticación agrupa \textsc{User}, \textsc{Session} y 
+\textsc{Push\_Token}, responsables respectivamente de las 
+credenciales, los tokens JWT activos y los identificadores para el 
+envío de notificaciones push al dispositivo móvil del administrador.
+
+\begin{figure*}[p]
+\centering
+\includegraphics[width=0.95\textwidth]{diagrama_er.png}
+\caption{Modelo entidad-relación completo del sistema. Las tablas se agrupan en cuatro dominios funcionales: inventario, mediciones, análisis y autenticación.}
+~\label{fig:er}
+\end{figure*}
+
+\subsection{Sensor de captura distribuida}
+~\label{subsec:sensor}
+
+El sensor de captura es el componente desplegado en cada endpoint 
+de la red que observa el tráfico local, recolecta métricas del 
+sistema y transmite ambos flujos hacia el backend central. Su 
+diseño interno resuelve tres problemas técnicos de forma integrada: 
+la captura continua sin bloquear la ejecución de tareas periódicas, 
+la sanitización del tráfico antes de su transmisión para preservar 
+la confidencialidad de las comunicaciones, y la entrega ordenada de 
+paquetes al colector sobre un canal TCP que no preserva fronteras 
+entre mensajes.
+
+\subsubsection{Arquitectura interna}
+
+La estructura del sensor (Fig.~\ref{fig:sensor-interno}) se 
+organiza en cuatro módulos funcionales: un capturador de paquetes 
+que intercepta el tráfico de la interfaz de red seleccionada, un 
+sanitizador que aplica el recorte dinámico al payload y preserva la 
+longitud original del paquete, un socket TCP que transmite los 
+paquetes binarios sanitizados al colector por el puerto 9000, y un 
+socket UDP que envía las métricas del endpoint (CPU, memoria RAM, 
+disco, velocidad del enlace) serializadas en formato JSON 
+~\cite{rfc8259} al puerto 9001.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\columnwidth]{sensor_interno.png}
+\caption{Arquitectura interna del sensor de captura. El módulo de captura intercepta paquetes, el sanitizador los recorta, y dos sockets independientes transmiten tráfico binario (TCP) y métricas JSON (UDP) al colector.}
+~\label{fig:sensor-interno}
+\end{figure}
+
+La selección de la interfaz de red principal se realiza de forma 
+automática mediante un filtro que descarta las interfaces sin 
+conectividad real: las de loopback, las que operan en el rango 
+APIPA~\cite{rfc3927} (169.254.0.0/16, indicador de ausencia de 
+asignación DHCP), las virtuales de hipervisores y contenedores, y 
+los adaptadores Bluetooth. La interfaz seleccionada es aquella que 
+posee simultáneamente una dirección IPv4 asignada y una dirección 
+MAC asociada, criterio que evidencia conectividad activa a la 
+infraestructura de red. El sensor construye su identificador único 
+concatenando el hostname del sistema con la dirección MAC de esa 
+interfaz, lo que garantiza unicidad a nivel de hardware y legibilidad 
+humana en el inventario centralizado.
+
+\subsubsection{Captura concurrente y modelo productor-consumidor}
+
+El sensor ejecuta tareas con perfiles temporales distintos: la 
+captura de paquetes es continua y bloqueante, mientras que el 
+reporte de métricas y la señal de heartbeat operan en intervalos 
+periódicos. La coordinación de estas tareas adopta un modelo de 
+concurrencia basado en hilos, siguiendo el patrón productor-consumidor 
+descrito por Buschmann et al.~\cite{buschmann1996posa}. Un hilo 
+dedicado actúa como productor, invocando la función de captura sobre 
+la interfaz seleccionada y depositando cada paquete procesado en un 
+buffer intermedio. El hilo principal opera como consumidor, vaciando 
+el buffer periódicamente para transmitir los paquetes acumulados al 
+colector. La sincronización se implementa mediante exclusión mutua 
+sobre el buffer compartido, lo que previene condiciones de carrera 
+en el acceso concurrente~\cite{silberschatz2018os}.
+
+El buffer se implementa como una cola acotada con política de 
+descarte FIFO.@Cuando la capacidad máxima se alcanza, los paquetes 
+más antiguos se descartan para acomodar los nuevos. Esta decisión 
+protege la disponibilidad del endpoint frente a escenarios donde el 
+consumidor no puede vaciar el buffer a la velocidad necesaria, como 
+ocurre ante una pérdida temporal de conectividad con el colector: 
+el consumo de memoria del sensor permanece acotado y predecible, en 
+cumplimiento del requerimiento no funcional de rendimiento que 
+establece un consumo máximo de memoria por sensor.
+
+\subsubsection{Sanitización del tráfico}
+
+El tráfico capturado no se transmite en su forma original al 
+colector. Antes de su almacenamiento en el buffer, cada paquete 
+atraviesa el sanitizador, que aplica un recorte dinámico al payload 
+en función del puerto de destino del flujo. Los encabezados de las 
+capas de enlace, red y transporte (aproximadamente 54 bytes, según 
+se justificó en la Sección~\ref{sec:marco-teorico}) contienen toda 
+la información necesaria para reconstruir flujos y extraer métricas 
+de comportamiento, de modo que un recorte a 96 bytes preserva la 
+totalidad de las cabeceras con margen para opciones TCP 
+~\cite{stevens2004unix}. Para tráfico dirigido a los puertos 
+asociados a DNS (53) y HTTPS (443), el recorte se extiende a 300 
+bytes; este margen adicional captura el dominio consultado en el 
+caso de DNS~\cite{rfc1035} y la indicación de nombre de servidor 
+(SNI) del handshake TLS en el caso de HTTPS~\cite{rfc8446}, 
+elementos con valor diagnóstico que no comprometen el contenido de 
+las comunicaciones.
+
+Cada paquete sanitizado conserva un campo \texttt{orig\_len} con la 
+longitud original antes del truncamiento. Este campo es necesario 
+para que el motor de análisis calcule métricas volumétricas como 
+throughput, bytes por flujo, tamaño promedio de paquete y carga del 
+enlace sobre el volumen real de tráfico, no sobre el volumen 
+truncado. La sanitización materializa así el principio de 
+minimización de datos exigido por el marco legal descrito en la 
+Sección~\ref{sec:marco-legal}: se preserva exclusivamente la 
+información técnica necesaria para el análisis, eliminando el 
+contenido de las comunicaciones que podría constituir interceptación 
+indebida.
+
+\subsubsection{Protocolo binario de transporte}
+
+TCP, como protocolo orientado a flujo de bytes, no preserva las 
+fronteras entre los mensajes individuales emitidos por el transmisor 
+~\cite{rfc793}. Un envío de 116 bytes por parte del sensor puede ser 
+recibido por el colector como una lectura de 80 bytes seguida de 
+otra de 36, o como una única lectura de 116, dependiendo del estado 
+del buffer del kernel y de las condiciones de la red. Esta 
+característica, conocida como \textit{message boundary problem} 
+~\cite{stevens2004unix}, requiere que el protocolo de aplicación 
+implemente su propio mecanismo de delimitación (Fig. 
+~\ref{fig:message-boundary}).
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\columnwidth]{tcp_framing.jpg}
+\caption{Problema de fronteras en TCP y solución mediante \textit{length-prefix framing}. El receptor no puede inferir los límites de los mensajes originales sin un esquema explícito de delimitación. El prefijo de longitud antepuesto a cada payload resuelve la ambigüedad.}
+~\label{fig:message-boundary}
+\end{figure}
+
+El sensor resuelve este problema mediante un esquema de 
+\textit{length-prefix framing}: antepone a cada paquete capturado un 
+encabezado fijo de 20 bytes que permite al receptor delimitar los 
+mensajes dentro del flujo continuo de TCP.@El encabezado se 
+estructura en \textit{network byte order} (big endian, conforme a 
+RFC 793) y contiene cuatro campos (Fig.~\ref{fig:tcp-header}): la 
+longitud original del paquete antes de la sanitización 
+(\texttt{orig\_len}, 4 bytes), el puerto destino extraído de la 
+cabecera de transporte del paquete capturado (\texttt{dst\_port}, 4 
+bytes), la marca temporal de captura en formato IEEE 754 de doble 
+precisión (\texttt{timestamp}, 8 bytes), y la longitud de los datos 
+truncados que siguen al encabezado (\texttt{data\_len}, 4 bytes).
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\columnwidth]{tcp_header.png}
+\caption{Estructura del encabezado binario de transporte sensor-colector. Los 20 bytes de cabecera preceden a un payload de tamaño variable indicado por \texttt{data\_len}.}
+~\label{fig:tcp-header}
+\end{figure}
+
+\subsubsection{Transporte dual y fundamentación de protocolos}
+
+La separación del tráfico capturado (TCP) y las métricas del sistema 
+(UDP) en dos canales paralelos responde a la diferencia en los 
+requisitos de confiabilidad de cada tipo de dato. Los paquetes de red 
+capturados son irrecuperables: cada paquete representa un evento 
+único en la red, y si se pierde en tránsito no existe otra copia ni 
+se regenera en el siguiente ciclo. La garantía de entrega ordenada y 
+confiable que TCP proporciona mediante sus mecanismos de 
+acknowledgement, retransmisión y control de flujo~\cite{rfc793} es 
+por tanto apropiada para este canal. Las métricas del endpoint, en 
+contraste, son tolerantes a pérdida: se generan periódicamente cada 
+cinco segundos, cada paquete contiene una muestra completa del 
+estado actual del sistema, y si un paquete UDP~\cite{rfc768} se 
+pierde, el siguiente lo reemplaza con datos más recientes. La 
+retransmisión de una métrica obsoleta consumiría ancho de banda sin 
+aportar valor. El sobrecosto de ocho bytes de encabezado UDP frente 
+a los veinte mínimos de TCP~\cite{stevens2004unix}, sumado a la 
+ausencia de establecimiento de sesión, hace de UDP la elección 
+natural para este perfil de transmisión.
+
+\subsection{Backend centralizado y pipeline de análisis}
+~\label{subsec:backend}
+
+El backend recibe los flujos provenientes de los sensores y los 
+transforma en métricas contextualizadas que alimentan el inventario 
+dinámico, el motor de anomalías y la capa de exposición. Su diseño 
+interno obedece al patrón arquitectónico de \textit{Pipes and 
+Filters}~\cite{buschmann1996posa}: los datos atraviesan una 
+secuencia de etapas especializadas conectadas por interfaces 
+tipadas, y cada etapa opera sobre la salida estructurada de la 
+anterior sin conocer su implementación. La Fig.~\ref{fig:servidor-central} 
+ilustra esta cadena completa, desde los 
+receptores TCP\@ que aceptan los flujos de los sensores hasta el 
+repositorio que persiste las métricas resultantes en PostgreSQL\@.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\columnwidth]{servidor_central.png}
+\caption{Pipeline interno del servidor central. Los receptores TCP aceptan los flujos de los sensores en hilos independientes; el rotador fragmenta el tráfico en archivos PCAP de ventana temporal fija; Zeek los procesa y genera logs; el parser los convierte en estructuras de conexión; el calculador aplica EWMA para derivar métricas contextualizadas, y el repositorio las persiste.}
+\label{fig:servidor-central}
+\end{figure}
+
+\subsubsection{Recepción concurrente de flujos}
+
+El servidor colector opera como punto de convergencia de datos en 
+una arquitectura distribuida en la que múltiples sensores 
+transmiten simultáneamente hacia el mismo destino. La concurrencia 
+en el receptor es un requisito funcional: el servidor debe atender 
+múltiples flujos de ingreso sin que el procesamiento de un sensor 
+bloquee la recepción de datos provenientes de otros.
+
+El modelo de concurrencia adoptado se basa en el patrón 
+\textit{Thread-per-Client}~\cite{schmidt2000posa2}. Un hilo 
+principal ejecuta un ciclo de aceptación de conexiones mediante la 
+primitiva \texttt{accept()} del API\@ de sockets Berkeley~\cite{stevens2004unix}. 
+Esta primitiva opera de forma bloqueante: 
+suspende la ejecución del hilo hasta que un sensor inicia una 
+conexión mediante el \textit{three-way handshake} de TCP~\cite{rfc793}. 
+Al completarse el handshake, \texttt{accept()} 
+retorna un descriptor de socket exclusivo para esa conexión, 
+mientras el socket original permanece en estado de escucha para 
+conexiones subsiguientes. Por cada conexión aceptada se instancia 
+un hilo dedicado que ejecuta la lógica de lectura del protocolo 
+binario descrito en la Sección~\ref{subsec:sensor}. El aislamiento 
+entre hilos garantiza que la latencia o desconexión de un sensor no 
+afecte la recepción de datos provenientes de los demás.
+
+La elección de Thread-per-Client sobre alternativas como la 
+multiplexación de E/S mediante \texttt{select()} o \texttt{epoll()}~\cite{stevens2004unix} 
+se fundamenta en el número acotado de 
+sensores previstos por los requerimientos no funcionales de 
+rendimiento del sistema. Para esta escala, la simplicidad del 
+modelo de hilos supera las ganancias de rendimiento que los 
+mecanismos de E/S asíncronos ofrecen en escenarios de alta 
+concurrencia con miles de conexiones simultáneas.
+
+Los hilos se configuran como \textit{daemon threads}, lo que 
+asegura su terminación automática cuando el proceso principal del 
+servidor finaliza. Esta configuración previene la persistencia de 
+hilos huérfanos que consumirían recursos del sistema operativo sin 
+propósito tras un apagado controlado~\cite{silberschatz2018os}.
+
+\subsubsection{Segmentación del tráfico en archivos PCAP}
+
+El receptor TCP reconstruye los paquetes sanitizados emitidos por 
+cada sensor y los entrega al \textit{PCAP Rotator}, el primer 
+filtro del pipeline. Este componente acumula los paquetes recibidos 
+en archivos con formato PCAP estándar~\cite{harris2020libpcap}, 
+compuestos por un encabezado global de 24 bytes seguido de una 
+secuencia de registros donde cada uno consta de un encabezado de 16 
+bytes y el contenido del paquete. Este formato es el esperado por 
+las herramientas convencionales de análisis de tráfico, lo que 
+permite que componentes externos especializados procesen la salida 
+sin necesidad de transformaciones intermedias.
+
+La rotación obedece a una ventana temporal fija: cada archivo PCAP 
+acumula el tráfico de un intervalo acotado, tras el cual se cierra 
+y se emite una notificación al motor de análisis. Esta 
+notificación se implementa siguiendo el patrón \textit{Observer}~\cite{gof1994}, 
+que desacopla al productor del consumidor de 
+eventos: el rotador publica la finalización de cada ventana sin 
+necesidad de conocer qué componentes la procesarán, y el motor de 
+análisis se suscribe a estas notificaciones para incorporar el 
+archivo recién cerrado a su cola de trabajo. El resultado es una 
+cadena donde la cadencia de análisis queda determinada por la 
+ventana de rotación, no por el ritmo de llegada de los paquetes.
+
+\subsubsection{Análisis de protocolos con Zeek}
+
+El motor de análisis delega el procesamiento semántico del tráfico 
+a Zeek, un framework de análisis de tráfico de red ampliamente 
+utilizado en el ámbito de la seguridad informática~\cite{paxson1999zeek}. 
+A diferencia de los analizadores orientados 
+a firmas, Zeek opera sobre el comportamiento de los protocolos: 
+reconstruye sesiones TCP, identifica los protocolos de aplicación 
+mediante inspección de contenido, y produce registros estructurados 
+que describen cada conexión en términos de sus partes, su duración, 
+los bytes intercambiados en cada dirección y los metadatos 
+específicos del protocolo detectado.
+
+Cada archivo PCAP emitido por el rotador se entrega a una instancia 
+de Zeek ejecutada en un contenedor Docker aislado del resto del 
+sistema. Esta aislación cumple dos propósitos. El primero es de 
+seguridad: el procesamiento de paquetes arbitrarios provenientes 
+de una red real plantea riesgos de explotación de vulnerabilidades 
+en el propio analizador, y la ejecución en contenedor acota el 
+dominio de compromiso en caso de fallo. El segundo es operativo: 
+Zeek y sus dependencias se mantienen versionadas de forma 
+independiente del resto del backend, lo que simplifica las 
+actualizaciones y garantiza la reproducibilidad del entorno de 
+análisis.
+
+Zeek produce múltiples archivos de registro por cada archivo PCAP 
+procesado. Los relevantes para el pipeline son \texttt{conn.log}, 
+que describe cada conexión observada con su 
+tupla de direcciones y puertos, marcas temporales, duración y 
+conteos de bytes y paquetes en cada sentido; \texttt{dns.log}, que 
+registra las consultas y respuestas DNS junto con los tiempos de 
+respuesta; y \texttt{ssl.log}, que describe los handshakes TLS 
+incluyendo el nombre de servidor indicado (SNI) cuando está 
+presente.
+
+\subsubsection{Transformación de logs y cálculo de métricas}
+
+Los archivos de registro producidos por Zeek son ficheros de texto 
+tabular (TSV) que no son aptos para el análisis en memoria de 
+aplicaciones posteriores. El \textit{Log Parser} actúa como 
+segundo filtro del pipeline: recorre los logs, filtra las columnas 
+relevantes y convierte cada línea en una estructura de datos 
+tipada que representa una conexión individual. Esta estructura 
+homogénea permite que el componente siguiente opere sin necesidad 
+de manipular texto crudo.
+
+El \textit{Metrics Calculator} consume las estructuras de conexión 
+y deriva las métricas contextualizadas que constituyen el producto 
+del pipeline. Entre ellas, el ancho de banda entrante y saliente 
+por dispositivo, la tasa de retransmisiones TCP, el tiempo de 
+respuesta DNS, el número de conexiones activas y fallidas, y la 
+clasificación de \textit{top talkers} dentro de la ventana 
+analizada. Las métricas que requieren suavizado temporal se 
+computan mediante el método EWMA~\cite{lucas1990ewma,roberts1959ewma}, 
+cuyo detalle formal se desarrolla en la Sección~\ref{subsec:motor} 
+junto con la descripción del motor de detección de anomalías.
+
+\subsubsection{Persistencia y separación de procesos}
+
+Las métricas resultantes se entregan al \textit{Repository}, un 
+componente que encapsula el acceso a PostgreSQL y expone una 
+interfaz uniforme hacia el resto del backend. La escritura 
+distingue entre entidades acumuladas y sobreescritas, según la 
+tipología del modelo de datos descrita en la Sección~\ref{subsec:arquitectura}: 
+cada ciclo inserta una nueva fila en 
+las tablas \textsc{\_Snapshot} y actualiza mediante \texttt{UPSERT} 
+las tablas \textsc{\_Current\_Metrics}.
+
+La comunicación entre el pipeline de procesamiento y la capa de 
+exposición (API REST y WebSocket, Sección~\ref{subsec:api}) se 
+realiza exclusivamente a través de la base de datos, sin 
+comunicación directa entre los dos procesos. Este patrón, 
+conocido como \textit{Shared Database} en la literatura de 
+integración empresarial~\cite{hohpe2003eip}, es apropiado cuando 
+ambos extremos pertenecen a la misma organización y comparten el 
+modelo de datos, y aporta dos ventajas. La primera es de 
+aislamiento de fallos: un bloqueo o reinicio del pipeline no 
+afecta la disponibilidad de la API para consultas móviles, y 
+viceversa. La segunda es de escalabilidad independiente: ambos 
+procesos pueden ajustar sus recursos asignados según su perfil de 
+carga específico, que es distinto en cada caso. El pipeline opera 
+en ráfagas periódicas con alto consumo de CPU, mientras que la 
+API presenta un perfil de carga irregular dominado por la 
+frecuencia de consulta desde el cliente móvil.
+
+\subsection{Motor de detección de anomalías}
+~\label{subsec:motor}
+
+El motor de detección opera como consumidor de las métricas 
+contextualizadas producidas por el pipeline descrito en la Sección~\ref{subsec:backend} 
+y convierte cada observación en una 
+evaluación cualitativa sobre su desviación respecto al comportamiento 
+habitual del dispositivo. El diseño del motor se fundamenta en tres 
+decisiones articuladas: un baseline adaptativo por dispositivo y por 
+métrica mediante EWMA, una cuantificación de desviaciones mediante 
+Z-Score adaptativo sobre varianza móvil, y un filtro de persistencia 
+que exige confirmación temporal antes de generar una alerta. La 
+justificación teórica de esta combinación y las limitaciones de las 
+alternativas consideradas se desarrollaron en la Sección~\ref{sec:marco-teorico}; 
+la presente subsección describe las 
+decisiones concretas de parametrización y los detalles algorítmicos 
+adoptados en la implementación.
+
+\subsubsection{Baseline adaptativo por dispositivo}
+
+Cada par dispositivo-métrica mantiene dos variables de estado: la 
+media exponencial~\(\mu_t\) y la varianza exponencial~\(\sigma^2_t\). 
+En cada ciclo de análisis (30~segundos), el motor recibe el vector 
+de métricas actuales y actualiza estas dos variables mediante las 
+recurrencias
+\begin{equation}
+\mu_t = \alpha\, x_t + (1-\alpha)\, \mu_{t-1}
+\label{eq:ewma-impl}
+\end{equation}
+\begin{equation}
+\sigma^2_t = (1-\alpha)\bigl[\sigma^2_{t-1} + \alpha(x_t - \mu_{t-1})^2\bigr]
+\label{eq:ewmv-impl}
+\end{equation}
+con factor de suavizado~\(\alpha = 0{,}10\)~\cite{lucas1990ewma,roberts1959ewma}. 
+Esta elección equilibra estabilidad y reactividad: el peso que una 
+observación de hace~\(k\) ciclos retiene en el baseline decae como~\(\alpha(1-\alpha)^k\), 
+de modo que una observación emitida hace 
+siete ciclos (aproximadamente tres minutos y medio) conserva la mitad 
+de su peso original, y una observación de hace 44 ciclos (22 minutos) 
+retiene menos del uno por ciento. Más allá de esa ventana el histórico 
+está efectivamente olvidado, lo que permite al motor adaptarse a 
+cambios legítimos de régimen en cuestión de minutos, a diferencia del 
+Z-Score con media acumulada, que requeriría horas para converger al 
+nuevo nivel.
+
+Un factor de suavizado menor (por ejemplo~\(\alpha = 0{,}01\)) 
+produciría un baseline con memoria superior a cuatro horas, 
+demasiado lento para adaptarse a cambios operativos legítimos de los 
+dispositivos monitoreados. Un factor mayor (por ejemplo~\(\alpha = 0{,}50\)) 
+produciría un baseline con memoria de tres minutos, tan 
+reactivo que una anomalía sostenida se absorbería en el propio 
+baseline antes de que el sistema alcanzara a reportarla con su 
+magnitud completa. El valor~\(\alpha = 0{,}10\) sitúa el motor en 
+un punto intermedio validado empíricamente sobre las 12~métricas 
+monitoreadas por dispositivo.
+
+\subsubsection{Varianza mínima y evaluación antes de actualización}
+
+Dos detalles de implementación tienen consecuencias sobre el 
+comportamiento del detector y merecen explicitación. El primero es 
+la existencia de un piso mínimo de varianza configurado según la 
+escala de cada métrica: 1{,}0 para las expresadas en porcentaje, 
+100{,}0 para las expresadas en bytes por segundo, 0{,}5 para los 
+conteos, 0{,}01 para los ratios y 0{,}1 para las métricas de 
+latencia. Este piso se emplea en el denominador del Z-Score cuando 
+la varianza acumulada cae por debajo, lo que ocurre con métricas que 
+permanecen constantes durante períodos largos (por ejemplo, una tasa 
+de pérdida de paquetes que se mantiene en cero durante horas) y que, 
+sin ese piso, producirían Z-Scores artificialmente grandes ante 
+cualquier fluctuación legítima posterior.
+
+El segundo detalle concierne al orden de evaluación y actualización 
+dentro de cada ciclo. El Z-Score se calcula contra el baseline y la 
+varianza del ciclo anterior, 
+\begin{equation}
+Z_t = \frac{x_t - \mu_{t-1}}{\sqrt{\sigma^2_{t-1} + \varepsilon}}
+\label{eq:zscore-impl}
+\end{equation}
+antes de actualizar esas variables con el valor observado. El 
+invertir el orden haría que la anomalía se absorbiera parcialmente 
+en el baseline antes de ser evaluada, reduciendo artificialmente su 
+Z-Score y comprometiendo la detección. En las pruebas del sistema, 
+un valor de~\(\mathtt{cpu\_pct} = 45\%\) contra un baseline de~\(15\%\) 
+produce~\(Z \approx 30{,}4\) cuando se evalúa antes de 
+actualizar; si se actualizaran primero el baseline y la varianza, el 
+mismo valor produciría~\(Z < 3\). La evaluación anticipada preserva 
+la sensibilidad completa del detector.
+
+\subsubsection{Fase de calentamiento}
+
+Durante los primeros 30~ciclos de observación (15~minutos) sobre un 
+dispositivo nuevo, el motor acumula muestras y actualiza el baseline 
+y la varianza, pero no genera alertas. La razón es cuantitativa: con 
+pocas observaciones, la varianza es cercana a cero porque aún no se 
+ha observado suficiente variabilidad natural. Un dispositivo cuya 
+\(\mathtt{cpu\_pct}\) oscila legítimamente entre el 10~\% y el 
+20~\% tendría, tras cinco ciclos, una varianza mínima; si el sexto 
+valor es~22~\% (dentro del rango normal), el Z-Score explotaría a 
+valores artificialmente altos porque la desviación estándar en el 
+denominador sería casi nula. La ventana de 30~ciclos garantiza que 
+la varianza refleje la variabilidad real del dispositivo antes de 
+habilitar las alertas. Si un dispositivo se desconecta 
+temporalmente y reconecta, su baseline se conserva en memoria y no 
+reinicia la fase de calentamiento, dado que la desconexión no 
+invalida el perfil de comportamiento previamente establecido.
+
+\subsubsection{Clasificación de severidad}
+
+Una vez superada la fase de calentamiento, cada ciclo produce para 
+cada métrica un valor de~\(|Z_t|\) que el motor clasifica según tres 
+umbrales de severidad. Las observaciones con~\(|Z_t| < 1{,}5\) se 
+consideran dentro del rango normal. Aquellas con~\(1{,}5 \leq |Z_t| < 2{,}0\) 
+se clasifican como informativas: se registran en la tabla 
+\textsc{Insight} para análisis retrospectivo pero no generan 
+notificación. Las que cumplen~\(2{,}0 \leq |Z_t| < 3{,}0\) se 
+clasifican como \textit{warning}: representan desviaciones con 
+probabilidad de ocurrencia de aproximadamente 4{,}56~\% bajo una 
+distribución normal, una de cada 22~observaciones esperadas. Las 
+que superan~\(|Z_t| \geq 3{,}0\) se clasifican como \textit{critical}: 
+probabilidad de aproximadamente 0{,}27~\%, una de 
+cada 370~observaciones~\cite{montgomery2013spc}. Esta gradación 
+permite que cada alerta incluya una cuantificación estadística de su 
+rareza, no únicamente una clasificación binaria.
+
+\subsubsection{Filtro de persistencia}
+
+Si cada observación con~\(|Z_t| \geq 2{,}0\) generara una alerta 
+inmediata, el sistema producirían un volumen elevado de falsas 
+alarmas ante fluctuaciones transitorias que son parte del 
+comportamiento normal de una red LAN:@ráfagas momentáneas de 
+tráfico, picos puntuales de respuesta DNS, o variaciones breves de 
+latencia. Estas oscilaciones no son anomalías en el sentido 
+operativo: no requieren intervención porque se resuelven por sí 
+solas en el siguiente ciclo. Las anomalías reales, en contraste, se 
+caracterizan por persistir durante varios ciclos consecutivos.
+
+Para discriminar entre fluctuaciones transitorias y anomalías 
+sostenidas, el motor incorpora un filtro de persistencia de 
+parámetros~\(N\)~y~\(M\) en el espíritu de las reglas de Western 
+Electric para cartas de control~\cite{montgomery2013spc}. El filtro 
+exige que~\(|Z_t| \geq 2{,}0\) se cumpla en al menos~\(N\) de los 
+últimos~\(M\) ciclos para emitir una alerta. Valores ensayados sobre 
+datos sintéticos con anomalías conocidas muestran que configuraciones 
+demasiado permisivas (sin filtro, o~\(N/M = 2/4\)) generan cientos 
+de falsas alarmas frente a decenas de anomalías reales, mientras que 
+configuraciones demasiado estrictas (\(N/M = 3/3\) o~\(3/5\)) pierden 
+entre 40~\% y 45~\% de las anomalías reales.
+
+La configuración~\(N/M = 2/2\) adoptada en el sistema exige que la 
+desviación se mantenga en dos ciclos consecutivos (un minuto) antes 
+de emitir la alerta. Sobre las pruebas sintéticas, esta 
+configuración reduce las falsas alarmas de 383 (sin filtro) a 16, 
+una disminución del 96~\%, mientras preserva 45 de las 48 anomalías 
+reales inyectadas, es decir, una tasa de detección del 93{,}8~\%. 
+Esta relación entre tasa de detección y tasa de falsas alarmas es la 
+que justifica la elección operativa del filtro.
+
+\subsubsection{Ciclo completo y persistencia de alertas}
+
+El ciclo del motor se ejecuta cada 30~segundos. En cada iteración, 
+para cada par dispositivo-métrica activo, el motor recupera el 
+estado previo de~\(\mu_{t-1}\) y~\(\sigma^2_{t-1}\) desde memoria, 
+evalúa el Z-Score contra el valor observado, actualiza el baseline 
+y la varianza conforme a las ecuaciones~\eqref{eq:ewma-impl}~y~\eqref{eq:ewmv-impl}, 
+incrementa el contador de ciclos consecutivos en desviación si 
+aplica, y decide si emite una alerta según el filtro de persistencia. 
+Las alertas confirmadas se persisten en la tabla~\textsc{Alert} 
+con la severidad calculada, el valor de~\(|Z_t|\) que disparó la 
+condición, la métrica implicada y la referencia al dispositivo. El 
+suscriptor WebSocket descrito en la Sección~\ref{subsec:api} 
+detecta la inserción y propaga la notificación al dispositivo móvil 
+del administrador.
+
+\subsection{API REST, WebSocket y red de acceso}
+~\label{subsec:api}
+
+La capa de exposición presenta los datos persistidos por el 
+pipeline a la aplicación móvil del administrador. Su diseño se 
+apoya en tres elementos: una interfaz REST~\cite{fielding2000rest} 
+para consultas puntuales, un canal WebSocket~\cite{rfc6455} para la 
+propagación de eventos en tiempo real, y una red privada Tailscale 
+para el acceso remoto sin exponer el servidor a la Internet 
+pública. Ambas interfaces se autentican mediante JSON Web 
+Tokens~\cite{rfc7519}, lo que evita mantener estado de sesión en 
+el servidor.
+
+\subsubsection{Interfaz REST}
+
+La API se organiza en cuatro dominios que se corresponden con las 
+pantallas principales de la aplicación móvil: \texttt{/auth} para 
+el login, \texttt{/network} para las métricas globales del 
+segmento, \texttt{/devices} para el inventario y las métricas por 
+dispositivo, y \texttt{/alerts} para las alertas generadas por el 
+motor descrito en la Sección~\ref{subsec:motor}. Cada recurso se 
+identifica mediante un URI semántico y se manipula con los métodos 
+estándar de HTTP~\cite{rfc9110}: \texttt{GET} para consulta, 
+\texttt{POST} para creación y \texttt{PATCH} para modificación 
+parcial.
+
+La implementación emplea FastAPI sobre ASGI, lo que permite 
+mantener el servidor HTTP y el canal WebSocket en el mismo proceso. 
+La validación de peticiones y la serialización de respuestas se 
+delega a Pydantic, que verifica estáticamente los tipos declarados 
+en los modelos y rechaza las peticiones malformadas antes de que 
+alcancen la lógica de negocio. El contrato de la API se expone 
+automáticamente como especificación OpenAPI en el endpoint 
+\texttt{/docs}.
+
+\subsubsection{Autenticación sin estado con JWT}
+
+El login valida las credenciales contra los hashes almacenados en 
+la tabla \textsc{User} y emite un token firmado con HMAC-SHA256~\cite{rfc2104}. 
+El cliente lo almacena y lo presenta en el 
+encabezado \texttt{Authorization} de las peticiones subsiguientes. 
+La verificación se reduce a una operación criptográfica local de 
+complejidad constante, por lo que no se requiere una consulta a 
+PostgreSQL por cada petición. La selección de HMAC sobre firma 
+asimétrica responde a que la misma entidad emite y verifica los 
+tokens, escenario en el que el algoritmo simétrico es suficiente y 
+más rápido.
+
+\subsubsection{Canal WebSocket y notificaciones}
+
+El modelo \textit{request-response} de HTTP obligaría al cliente a 
+implementar \textit{polling} para detectar cambios en las métricas 
+y las alertas, con el consiguiente aumento de carga sobre 
+PostgreSQL y de transferencia redundante de datos. Para evitarlo, 
+el sistema expone un canal WebSocket en el endpoint \texttt{/ws} 
+que mantiene una conexión TCP persistente bidireccional. El cliente 
+incluye el JWT como parámetro de consulta en el URI y el servidor 
+valida la firma antes de aceptar el \textit{upgrade} de protocolo.
+
+Dentro del servidor, el \textit{WebSocket Handler} se suscribe a 
+los cambios de las tablas \textsc{Alert} y 
+\textsc{\_Current\_Metrics} mediante el mecanismo 
+\texttt{LISTEN/NOTIFY} de PostgreSQL.@Cuando el pipeline inserta o 
+actualiza un registro, la base de datos emite una notificación al 
+canal suscrito y el handler la propaga a los clientes conectados. 
+Este flujo desacopla al pipeline de la capa de exposición: el 
+pipeline desconoce a los clientes móviles y la API no sondea la 
+base de datos. Cuando la aplicación móvil no está en primer plano, 
+las notificaciones se entregan a través de Firebase Cloud 
+Messaging, utilizando los tokens registrados en la tabla 
+\textsc{Push\_Token} durante el login.
+
+\subsubsection{Red privada con Tailscale}
+
+El requerimiento de acceso remoto desde cualquier ubicación se 
+resuelve mediante una red privada virtual construida sobre 
+Tailscale, que implementa una malla entre dispositivos con el 
+protocolo WireGuard~\cite{donenfeld2017wireguard}. El servidor 
+central y el dispositivo móvil se registran como nodos de la misma 
+red privada, reciben una dirección del rango CGNAT 
+\texttt{100.64.0.0/10} y establecen un túnel cifrado directo 
+cuando el estado del NAT lo permite; cuando no, el tráfico se 
+enruta a través de los relays DERP de Tailscale, también cifrados. 
+En ninguno de los casos el servidor expone puertos a la Internet 
+pública, lo que resuelve simultáneamente la movilidad geográfica 
+del administrador y la confidencialidad del canal de comunicación 
+sin degradar la postura de seguridad del backend.
+
+\subsection{Integración continua, pruebas y despliegue}
+~\label{subsec:cicd}
+
+% ============================================================
+% AQUI VA LO DE JOHAN
+% ============================================================
+% Pendiente de redacción: pipelines de GitHub Actions, batería de
+% tests del backend, dashboard de validación HTML, despliegue
+% contenedorizado con Docker Compose.
+% ============================================================

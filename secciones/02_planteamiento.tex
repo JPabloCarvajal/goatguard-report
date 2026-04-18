@@ -1,0 +1,101 @@
+\section{Planteamiento del problema y justificación}
+~\label{sec:problema}
+
+\subsection{Situación problema}
+
+La gestión de infraestructuras de red en entornos locales 
+presenta una dependencia estructural respecto a consolas de 
+administración estáticas que condiciona tanto la continuidad como la 
+calidad de la supervisión. Durante los periodos en los que el 
+administrador se desplaza, la capacidad de observar el 
+comportamiento de los activos se interrumpe, y los eventos que 
+ocurren en esos intervalos solo se conocen cuando sus efectos ya se 
+manifestaron en forma de caídas de servicio o lentitud reportada por 
+los usuarios. La información disponible para el diagnóstico, además, 
+suele limitarse a registros crudos en archivos PCAP o logs en texto 
+plano, sin un procesamiento que la transforme en métricas 
+contextualizadas ni un inventario que permita distinguir los 
+dispositivos legítimos de aquellos que no deberían estar conectados. 
+El resultado es una administración que opera sobre información 
+parcial y reacciona tarde.
+
+\subsection{Árbol de causas y efectos}
+
+El árbol del problema (Fig.~\ref{fig:arbol-problema}) identifica 
+cuatro causas estructurales y cuatro efectos directos que orientan el 
+diseño de la solución.
+
+\noindent\textbf{C1. Dependencia de modelos centralizados y estáticos.} 
+Las herramientas convencionales operan desde un punto fijo dentro de 
+la red y presentan la información en formatos poco adecuados para 
+dispositivos móviles o pantallas reducidas, lo que hace impráctica la 
+supervisión remota.
+
+\noindent\textbf{C2. Ausencia de captura distribuida por endpoint.} 
+La captura desde un único punto de observación ofrece una visión 
+agregada del tráfico, pero no permite correlacionar flujos anómalos 
+con el dispositivo que los origina.
+
+\noindent\textbf{C3. Falta de contextualización de las métricas.} 
+El volumen capturado por las herramientas tradicionales no se 
+transforma en indicadores accionables como salud del enlace, perfiles 
+de consumo, tasas de retransmisión TCP o tiempos de respuesta DNS, de 
+modo que la información existe pero permanece inaccesible en un 
+formato que dificulta el diagnóstico.
+
+\noindent\textbf{C4. Carencia de inventario dinámico clasificado.} 
+Los escaneos activos detectan la presencia de dispositivos mediante 
+direcciones IP y MAC, pero no clasifican el tipo de equipo ni su rol 
+dentro de la red, con lo cual el administrador vigila una red cuya 
+composición exacta desconoce.
+
+Estas causas se traducen en cuatro efectos operativos: tiempos de 
+detección prolongados ante anomalías y amenazas (E1); interrupciones 
+en la supervisión durante los periodos de movilidad del administrador 
+(E2); diagnósticos imprecisos basados en información incompleta (E3); 
+y presencia no detectada de dispositivos no autorizados, con la 
+consecuente exposición a riesgos internos sobre la confidencialidad, 
+integridad y disponibilidad de la información (E4).
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=\columnwidth]{arbol_problema.png}
+\caption{Árbol de causas y efectos del problema.}
+~\label{fig:arbol-problema}
+\end{figure}
+
+\subsection{Pregunta problematizadora}
+
+\textit{¿Cómo abordar la visibilidad y control sobre el 
+comportamiento del tráfico de red y el estado de los activos 
+conectados en una infraestructura, considerando la necesidad de 
+detectar anomalías, métricas y dispositivos de forma independiente 
+de la ubicación física del administrador?}
+
+\subsection{Justificación}
+
+Las limitaciones descritas trascienden el plano de la comodidad 
+operativa y afectan la continuidad de los servicios, la capacidad 
+de respuesta del equipo responsable y la exposición a riesgos de 
+seguridad interna. Cada intervalo sin supervisión amplía la ventana 
+durante la cual una anomalía puede escalar hacia una afectación de 
+mayor alcance, y cada diagnóstico realizado sobre información 
+incompleta incrementa la probabilidad de ciclos de prueba y error 
+que consumen tiempo y pueden agravar la situación original. En 
+organizaciones donde la red sostiene la totalidad de los procesos 
+de comunicación interna y acceso a la información, esta brecha 
+representa un costo directo en términos de productividad, calidad 
+del servicio y posturas de seguridad.
+
+El abordaje del problema requiere articular conocimientos de 
+distintas áreas de la ingeniería de sistemas: captura y análisis de 
+tráfico desde la perspectiva de redes de datos, procesamiento y 
+persistencia de volúmenes significativos de información desde la 
+perspectiva de bases de datos y sistemas distribuidos, y exposición 
+de resultados al administrador desde la perspectiva del desarrollo 
+de software y la movilidad. La naturaleza integradora del proyecto 
+justifica su desarrollo como una propuesta unificada más que como 
+la mejora aislada de un componente, y habilita un escenario de 
+aplicación para las competencias de infraestructura tecnológica, 
+seguridad de la información e ingeniería de software establecidas 
+en el marco académico del Proyecto Integrador.

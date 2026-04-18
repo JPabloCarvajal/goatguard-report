@@ -1,0 +1,91 @@
+\section{Marco legal y normativo}
+\label{sec:marco-legal}
+
+La operación de un sistema que captura tráfico de red y registra 
+información sobre los dispositivos conectados debe ajustarse al marco 
+legal aplicable a la protección de los datos personales y al acceso 
+a sistemas informáticos. Este ajuste se evalúa tradicionalmente desde 
+los tres pilares de la seguridad de la información, conocidos como 
+tríada CIA: confidencialidad, que exige que la información solo sea 
+accesible a quienes tienen autorización explícita; integridad, que 
+exige que los datos no sean alterados de forma indebida durante su 
+tratamiento; y disponibilidad, que exige que la información se 
+mantenga accesible para los usuarios legítimos en el momento en que 
+la requieran. Las decisiones de diseño descritas en la Sección 
+\ref{sec:desarrollo}, como la sanitización de payload, la 
+autenticación basada en tokens firmados, el cifrado en tránsito y la 
+separación de procesos para aislar fallos, responden de forma directa 
+a estos tres pilares.
+
+En el ordenamiento jurídico colombiano, las normas aplicables a 
+GOATGuard se concentran en tres bloques: la tipificación de los 
+delitos contra la confidencialidad, integridad y disponibilidad de 
+los datos y los sistemas informáticos \cite{ley1273_2009}; el régimen 
+general de protección de datos personales \cite{ley1581_2012} y su 
+decreto reglamentario parcial \cite{decreto1377_2013}; y las 
+disposiciones sobre monitoreo laboral \cite{ley2466_2025}. La 
+Tabla~\ref{tab:marco-legal} sintetiza los artículos relevantes y la 
+forma en que el diseño del sistema responde a cada uno de ellos.
+
+\begin{table*}[!t]
+\centering
+\caption{Normativa colombiana aplicable al sistema y su impacto en el diseño.}
+\label{tab:marco-legal}
+\begin{tabular}{@{}p{2.5cm}p{1.8cm}p{5cm}p{6cm}@{}}
+\toprule
+\textbf{Norma} & \textbf{Artículo} & \textbf{Materia regulada} & \textbf{Respuesta de diseño en GOATGuard} \\
+\midrule
+Ley 1273 de 2009 & 269A & Acceso abusivo a sistema informático & La instalación del sensor requiere autorización expresa del responsable de la red. \\[4pt]
+Ley 1273 de 2009 & 269C & Interceptación de datos informáticos & La captura de paquetes se realiza bajo autorización documentada; el payload se sanitiza para no interceptar contenido de comunicaciones. \\[4pt]
+Ley 1581 de 2012 & 4 (libertad) & Consentimiento del titular de los datos & Los usuarios de los endpoints son informados del monitoreo antes de la puesta en operación. \\[4pt]
+Ley 1581 de 2012 & 4 (finalidad) & Tratamiento únicamente para el fin declarado & Los datos capturados se usan solo para la detección de anomalías y el inventario de activos, no para otros propósitos. \\[4pt]
+Ley 1581 de 2012 & 6 & Excepción para fines académicos o de investigación & Aplicable al presente proyecto, siempre que se mantenga la anonimización del contenido. \\[4pt]
+Decreto 1377 de 2013 & 3 & Aviso previo de privacidad & El despliegue del sistema incluye la entrega de un aviso de privacidad a los usuarios antes de iniciar la captura. \\[4pt]
+Ley 2466 de 2025 & N/A & Monitoreo en el ámbito laboral & En escenarios empresariales, la operación del sistema requiere el consentimiento explícito y documentado del trabajador. \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+Tres decisiones concretas del diseño resultan del cruce con la 
+tabla anterior. La primera es la sanitización del payload en el 
+sensor de captura: el recorte dinámico de los paquetes preserva los 
+encabezados necesarios para el análisis de flujos pero elimina el 
+contenido de las comunicaciones, lo que reduce el alcance de la 
+captura al estrictamente necesario para el fin declarado y elimina la 
+exposición a contenido sensible que podría constituir una 
+interceptación indebida en el sentido del artículo 269C. La segunda 
+es el control de acceso al sistema mediante autenticación con 
+contraseña hasheada y emisión de tokens JWT con expiración definida, 
+que limita el acceso a los datos procesados únicamente al 
+administrador autorizado, en concordancia con el principio de 
+confidencialidad. La tercera es la generación de un registro 
+persistente de las operaciones realizadas por el pipeline y la API, 
+que permite auditar el uso del sistema y respaldar la trazabilidad 
+exigida por el régimen general de protección de datos.
+
+La aplicación académica del sistema se encuadra dentro de la 
+excepción científica del artículo 6 de la Ley 1581 de 2012, 
+condicionada a la anonimización del tratamiento. El equipo adopta 
+esta condición como criterio operativo: ningún identificador de 
+usuario individual se persiste en el sistema, y los identificadores 
+de dispositivos se construyen a partir de atributos técnicos 
+(hostname y dirección MAC) que no permiten por sí mismos vincular la 
+actividad observada con una persona natural específica. La extensión 
+del sistema a entornos productivos, donde esta excepción no aplicaría 
+de forma automática, requeriría la gestión explícita de los 
+consentimientos correspondientes según la Ley 2466 de 2025 en 
+contextos laborales.
+
+La totalidad de las actividades de captura, procesamiento y pruebas 
+ejecutadas durante el desarrollo del proyecto se circunscriben a 
+entornos controlados dispuestos por el equipo de investigación, 
+conformados por redes locales de uso académico y por los endpoints 
+propios de los integrantes del proyecto. Los datos capturados durante 
+estas pruebas no se transfieren a terceros, no se integran a 
+sistemas en producción y no se emplean para ningún fin ajeno al de 
+la validación técnica del prototipo. La eventual adopción del sistema 
+en un entorno productivo o empresarial queda por fuera del alcance 
+del presente trabajo y requeriría, como condición previa, la 
+formalización de los consentimientos, autorizaciones y controles 
+adicionales que el marco normativo señalado exige para el tratamiento 
+de datos personales fuera de la excepción científica.
