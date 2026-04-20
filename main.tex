@@ -7,7 +7,7 @@
 \usepackage{lmodern}
 \usepackage{float}
 
-% ===== Gráficos y tablas =====
+% ===== Gráficos y tablas ===== 
 \usepackage{graphicx}
 \graphicspath{{figuras/}}
 \usepackage{booktabs}
@@ -61,8 +61,34 @@ Bucaramanga, Colombia.}
 \maketitle
 
 \begin{abstract}
-[TODO: resumen de 150--250 palabras. Se redacta al final del informe.]
+La gestión de infraestructura en redes de área local enfrenta una 
+limitación estructural: los modelos convencionales de monitoreo 
+dependen de consolas estáticas ancladas a estaciones de trabajo 
+fijas, carecen de mecanismos de captura distribuida a nivel de 
+endpoint, y no transforman los datos crudos de red en información 
+contextualizada por dispositivo, lo que prolonga los tiempos de 
+detección de anomalías y deja fuera del inventario a los 
+dispositivos no autorizados. Este trabajo presenta el diseño, la 
+implementación y la validación de GOATGuard, un sistema de 
+monitoreo de redes LAN que articula sensores de captura 
+desplegados en los endpoints, un backend centralizado organizado 
+según el patrón Pipes and Filters, un motor de detección de 
+anomalías basado en medias móviles ponderadas exponencialmente con 
+Z-Score adaptativo y filtro de persistencia, y una aplicación 
+móvil conectada al servidor mediante una red privada que permite 
+el acceso remoto sin exposición a Internet. El diseño se fundamenta 
+en el modelo de referencia IPFIX de la IETF y en los estándares del 
+modelo OSI, e incorpora decisiones explícitas de sanitización del 
+tráfico alineadas con el marco legal colombiano de protección de 
+datos personales. La validación funcional se realizó en un entorno 
+controlado de catorce nodos con doce endpoints instrumentados, y 
+caracterizó la huella del sistema en un régimen de operación 
+continua. El trabajo documenta no solo un sistema funcional sino el 
+conjunto de decisiones arquitectónicas y normativas que su 
+construcción exigió, y deja planteadas líneas específicas de 
+extensión hacia detección multivariada y validación de seguridad.
 \end{abstract}
+
 
 \begin{IEEEkeywords}
 monitoreo de red, captura distribuida, detección de anomalías,
