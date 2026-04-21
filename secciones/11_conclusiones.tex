@@ -1,73 +1,72 @@
 \section{Conclusiones}
-\label{sec:conclusiones}
+~\label{sec:conclusiones}
 
-Los estándares maduros del monitoreo de red, como la RFC 5470 sobre IPFIX, están 
-diseñados pensando en entornos de telecomunicaciones de gran 
-escala, donde los \textit{observation points} son routers 
-empresariales y los \textit{collectors} son piezas dedicadas de 
-infraestructura. Aplicarlos a una red LAN de decenas de endpoints 
-monitoreada por un servidor doméstico obliga a una operación de 
-traducción que los estándares no documentan: qué componentes se 
-conservan, cuáles se simplifican, cuáles pierden sentido. El 
-sistema demuestra que esa traducción es posible, pero también 
-evidencia que la literatura actual deja un hueco descriptivo para 
-los despliegues intermedios entre el laboratorio didáctico y la 
-infraestructura de operador. Caracterizar ese hueco con rigor 
-podría ser, por sí solo, el objeto de un trabajo posterior.
+Los estándares maduros del monitoreo de red, como la RFC 5470 sobre IPFIX, 
+fueron diseñados para entornos de telecomunicaciones de gran escala, donde 
+los \textit{observation points} son routers empresariales y los 
+\textit{collectors} son piezas dedicadas de infraestructura. Aplicarlos a 
+una red LAN de decenas de endpoints monitoreada por un servidor doméstico 
+obliga a una traducción que los estándares no documentan: qué componentes 
+se conservan, cuáles se simplifican, cuáles pierden sentido. El sistema 
+demuestra que esa traducción es posible, pero también que la literatura 
+actual no cubre los despliegues intermedios entre el laboratorio didáctico 
+y la infraestructura de operador. Caracterizar con rigor ese vacío podría 
+ser, por sí solo, el objeto de un trabajo posterior.
 
-El marco legal colombiano 
-aplicable al monitoreo de tráfico en redes privadas, compuesto por 
-la Ley 1273 de 2009 sobre delitos informáticos, la Ley 1581 de 
-2012 sobre protección de datos personales, el Decreto 1377 de 
-2013 que la reglamenta, y la Ley 2466 de 2025 que actualiza el 
-deber de aviso de privacidad, ofrece un perímetro amplio pero 
-deliberadamente genérico. El proyecto asumió la responsabilidad de 
-traducir ese perímetro a decisiones técnicas concretas que 
-incluyen sanitización del payload para mantenerse dentro de la 
-finalidad declarada de monitoreo, recorte del contenido sensible 
-para satisfacer el principio de minimización, consentimiento del 
-usuario en el endpoint mediante un archivo explícito de aceptación, 
-y delimitación del uso a entornos controlados con fines académicos. 
-La conclusión que se impone no es que el sistema cumpla la norma, 
-sino que el cumplimiento efectivo requiere esa traducción en donde 
-el marco legal por sí solo no indica cuántos bytes debe conservar 
-un sensor ni cómo debe construirse un flujo de consentimiento. 
-Ese trabajo intermedio, que en este caso se realizó dentro del 
-proyecto, no es habitual en la literatura técnica sobre monitoreo 
-y queda como contribución documentada del informe. La totalidad 
-de las actividades descritas se desarrolló dentro de un entorno 
-controlado montado para los fines de este proyecto integrador, 
-y la información recopilada durante las pruebas tuvo carácter 
-estrictamente investigativo, sin transferencia a terceros, sin 
-integración a entornos productivos y sin uso alguno ajeno a la 
-validación académica del sistema.
+El marco legal colombiano aplicable al monitoreo de tráfico en redes 
+privadas, compuesto por la Ley 1273 de 2009 sobre delitos informáticos, 
+la Ley 1581 de 2012 sobre protección de datos personales, el Decreto 1377 
+de 2013 que la reglamenta, y la Ley 2466 de 2025 que actualiza el deber 
+de aviso de privacidad, ofrece un perímetro amplio pero deliberadamente 
+genérico. El proyecto asumió la responsabilidad de traducir ese perímetro 
+a decisiones técnicas concretas que incluyen sanitización del payload 
+para mantenerse dentro de la finalidad declarada de monitoreo, recorte 
+del contenido sensible para satisfacer el principio de minimización, 
+consentimiento del usuario en el endpoint mediante un archivo explícito 
+de aceptación, y delimitación del uso a entornos controlados con fines 
+académicos. La conclusión que se impone no es que el sistema cumpla la 
+norma, sino que el cumplimiento efectivo requiere esa traducción en donde 
+el marco legal por sí solo no indica cuántos bytes debe conservar un 
+sensor ni cómo debe construirse un flujo de consentimiento. Ese trabajo 
+intermedio, que en este caso se realizó dentro del proyecto, no es 
+habitual en la literatura técnica sobre monitoreo y queda como 
+contribución documentada del informe. La totalidad de las actividades 
+descritas se desarrolló dentro de un entorno controlado montado para los 
+fines de este proyecto integrador, y la información recopilada durante 
+las pruebas tuvo carácter estrictamente investigativo, sin transferencia 
+a terceros, sin integración a entornos productivos y sin uso alguno ajeno 
+a la validación académica del sistema.
 
-La noción de \textit{tiempo real} 
-en los sistemas de monitoreo se usa con frecuencia de manera 
-imprecisa, como si fuese un atributo binario. El sistema construido 
-obliga a reconocer que el tiempo real de un dashboard de 
-monitoreo es el resultado compuesto de al menos cuatro latencias: 
-la ventana de captura del sensor, el ciclo de análisis del 
-pipeline, el filtro de persistencia del motor de anomalías, y la 
-propagación del evento a través del WebSocket hasta la aplicación 
-móvil. Cada una de estas latencias responde a una restricción 
-distinta, y reducirlas simultáneamente produciría un sistema más 
-reactivo pero también más ruidoso, menos estable y más costoso en 
-recursos. En particular, el filtro de persistencia de dos ciclos 
-introduce un retardo mínimo de un minuto entre la aparición de una 
-anomalía real y la alerta que llega al administrador, retardo que 
-el proyecto asume como costo explícito para reducir el volumen de 
-falsas alarmas en dos órdenes de magnitud. El sistema no ofrece 
-tiempo real absoluto, ofrece un compromiso informado entre 
-reactividad y confiabilidad que debe hacerse explícito en lugar 
-de quedar oculto bajo la etiqueta genérica de \textit{real time}.
+El cronograma de una metodología por fases determina cuándo cada decisión 
+debe estar documentada, pero la evidencia técnica que valida o 
+descarta esa decisión sigue un ritmo propio que no siempre 
+coincide con los hitos; una decisión de arquitectura consignada 
+en Elaboración puede quedar invalidada por una prueba ejecutada 
+semanas después en Construcción, y el artefacto que la documenta 
+ya no describe el sistema real. De ello, se deduce que una
+ metodología útil en este contexto no es la que prescribe la 
+ secuencia más completa sino la que admite que los artefactos 
+ evolucionen de forma versionada y cíclica, y que las decisiones 
+ inicialmente tentativas queden registradas como tales hasta que 
+ la evidencia técnica las confirme o las revise.
 
-El valor del ejercicio no radicó en producir una 
-innovación técnica aislada, sino en articular decisiones de 
-ingeniería, restricciones normativas y elecciones de diseño bajo 
-un marco metodológico trazable. Lo que el proyecto 
-aporta es la cohesión con que esas piezas se combinaron para un 
-problema concreto, y la transparencia con que las decisiones se 
-documentaron para que el proceso sea auditable por terceros. Esa 
-transparencia, más que la solución en sí, es lo que distingue un 
-proyecto académico/investigativo del desarrollo de un producto comercial.
+La expresión \textit{tiempo real} sugiere inmediatez, pero en un sistema 
+de monitoreo siempre existe un retardo compuesto por varias etapas que 
+procesan los datos antes de mostrarlos. Reducir ese retardo en cualquiera 
+de esas etapas tiene una contrapartida técnica, que puede manifestarse 
+como mayor volumen de falsas alarmas, un mayor consumo de recursos o 
+menor calidad del análisis. La decisión no está en si el sistema alcanza 
+o no el tiempo real, sino con qué consciencia se interpreta cada alerta. 
+Los sistemas de monitoreo no fallan cuando el retardo existe, fallan 
+cuando el retardo se ignora y se toman decisiones operativas como si la 
+información recibida describiera el presente exacto de la red.
+
+El valor del ejercicio no radicó en producir una innovación técnica 
+aislada, sino en articular decisiones de ingeniería, restricciones 
+normativas y elecciones de diseño bajo un marco metodológico trazable. 
+Lo que el proyecto aporta es la cohesión con que esas piezas se 
+combinaron para un problema concreto, y la transparencia con que las 
+decisiones se documentaron para que el proceso sea auditable por 
+terceros. Esa transparencia, más que la solución en sí, es lo que 
+distingue un proyecto académico e investigativo del desarrollo de un 
+producto comercial.

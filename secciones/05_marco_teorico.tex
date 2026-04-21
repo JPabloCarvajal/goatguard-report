@@ -41,29 +41,23 @@ expresar las decisiones de diseño en términos de capas sin ambigüedad
 y asociar cada componente del sistema a una responsabilidad 
 específica dentro del stack de comunicaciones~\cite{kurose2010redes}.
 
-\subsection{Estructura de un paquete de red}
+\subsection{Estructura de un paquete de red
+}
 
 Un paquete observado en una interfaz Ethernet sigue un esquema de 
 encapsulación anidada en el que cada capa antepone sus propios 
 encabezados al contenido recibido de la capa superior 
-~\cite{forouzan2006transmision}. En la base se encuentra el encabezado 
+\cite{forouzan2006transmision}. En la base se encuentra el encabezado 
 Ethernet de catorce bytes~\cite{ieee8023}, que incluye las 
 direcciones MAC de origen y destino y el campo EtherType que indica 
-el protocolo de la capa siguiente. A continuación aparece el 
-encabezado IP de veinte bytes en su versión mínima, que contiene las 
-direcciones IP de origen y destino, el identificador de protocolo de 
-transporte, el TTL y el checksum de cabecera. Por último se ubica el 
-encabezado de transporte: veinte bytes para TCP, con números de 
-secuencia y acuse, tamaño de ventana y banderas de control, u ocho 
-bytes para UDP, con puertos y longitud del datagrama 
-~\cite{stevens2004unix}.
-
-\begin{figure}[ht]
-\centering
-\includegraphics[width=\columnwidth]{paquete_red.png}
-\caption{Estructura simplificada de un paquete de red.}
-~\label{fig:paquete-red}
-\end{figure}
+el protocolo de la capa siguiente (Fig.~\ref{fig:paquete-red}). A 
+continuación aparece el encabezado IP de veinte bytes en su versión 
+mínima, que contiene las direcciones IP de origen y destino, el 
+identificador de protocolo de transporte, el TTL y el checksum de 
+cabecera. Por último se ubica el encabezado de transporte: veinte 
+bytes para TCP, con números de secuencia y acuse, tamaño de ventana 
+y banderas de control, u ocho bytes para UDP, con puertos y longitud 
+del datagrama~\cite{stevens2004unix}.
 
 Este conjunto de encabezados, aproximadamente cincuenta y cuatro 
 bytes, concentra la totalidad de la información necesaria para 
@@ -78,7 +72,6 @@ ciclo de vida de una conexión y detectar retransmisiones
 contener información sensible como credenciales, contenido de 
 comunicaciones o datos personales, y su captura integral 
 comprometería la confidencialidad de los usuarios monitoreados.
-
 Un segundo aspecto relevante es el orden de los bytes en la 
 transmisión. Los encabezados de los protocolos de red se representan 
 en network byte order, que corresponde a la convención big-endian: 
@@ -88,6 +81,14 @@ little-endian, por lo que la serialización y deserialización de
 campos numéricos requiere conversiones explícitas para garantizar la 
 interoperabilidad entre emisores y receptores independientemente de 
 la arquitectura subyacente~\cite{stevens2004unix}.
+
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\columnwidth]{paquete_red.png}
+\caption{Estructura simplificada de un paquete de red.}
+~\label{fig:paquete-red}
+\end{figure}
 
 Esta estructura justifica técnicamente la estrategia de sanitización 
 adoptada por los sensores de captura: un recorte de noventa y seis 
