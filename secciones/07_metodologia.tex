@@ -104,4 +104,91 @@ Bolivariana.
 
 \subsection{Herramientas de gestión, control de versiones e integración continua}
 
-AQUI VA LO DE JOHAN
+Las fases descritas en las secciones anteriores requieren un sustrato
+operativo que preserve la trazabilidad de cada decisión, mantenga el
+estado compartido del código entre los integrantes del equipo y provea
+retroalimentación automatizada sobre la calidad de cada incremento.
+Este sustrato se articula mediante un sistema de control de versiones
+distribuido, una plataforma de gestión del trabajo alineada con los
+requerimientos funcionales, y un conjunto de pipelines de integración
+y entrega continua que ejecutan sobre cada cambio las verificaciones
+necesarias antes de aceptarlo como parte del producto en
+construcción.
+
+\subsubsection{Control de versiones y gestión del trabajo}
+
+El sistema se mantiene en dos repositorios Git alojados en GitHub,
+uno para el backend (\texttt{goatguard-server}) y otro para la
+aplicación móvil (\texttt{goatguard-app}). La separación responde a
+la divergencia de ciclos de vida, entornos de ejecución y
+dependencias tecnológicas de ambos componentes: el backend evoluciona
+en Python sobre contenedores Linux mientras que la aplicación móvil
+lo hace en Dart sobre empaquetamiento Android. Mantenerlos en
+repositorios distintos permite que cada uno progrese de forma
+independiente y habilita pipelines de validación especializados para
+cada stack. El código del agente de captura, por compartir el
+runtime Python con el backend y por su naturaleza auxiliar respecto
+al colector, se conserva dentro del repositorio del servidor para
+preservar la coherencia del canal binario descrito en la
+Sección~\ref{subsec:sensor}.
+
+La estrategia de ramas adoptada es de tipo \textit{trunk-based}:
+existe una única rama principal \texttt{main} que representa en todo
+momento el estado aceptado del sistema, y los cambios se integran
+mediante \textit{pull requests} sujetos a revisión cruzada entre los
+tres integrantes del equipo antes de ser fusionados. Esta política,
+acordada como práctica del equipo más que impuesta por reglas
+automatizadas del repositorio, cumple la función de auditoría técnica
+previa al merge y distribuye el conocimiento del código entre los
+desarrolladores, evitando la concentración del criterio sobre zonas
+específicas del sistema.
+
+La planificación de las iteraciones de Construcción se coordina
+mediante un tablero Jira, en el que los requerimientos funcionales
+se descomponen en historias y tareas con trazabilidad hacia los
+identificadores RF correspondientes. Jira complementa al histórico
+de Git: este último registra la evolución del código, mientras que
+aquel conserva el razonamiento de alto nivel y el avance por
+iteración.
+
+\subsubsection{Integración y entrega continua como práctica
+metodológica}
+
+Los pipelines de integración y entrega continua no constituyen un
+aspecto meramente operativo del proyecto sino una pieza metodológica
+central, en el sentido planteado por Humble y
+Farley~\cite{humble2010cd}: cada cambio sobre la rama principal
+debe atravesar un conjunto de verificaciones automáticas en una
+ventana acotada de tiempo, de modo que el costo de detectar una
+regresión se mantenga proporcional a la magnitud del cambio que la
+introdujo y no se acumule hasta el final de la iteración. En el
+contexto del RUP adoptado por el proyecto~\cite{kruchten2003rup},
+esta práctica materializa el mecanismo de retroalimentación entre
+Construcción y Elaboración: cuando una prueba automatizada contradice
+un supuesto consignado en la fase de Elaboración, la evidencia queda
+registrada en el mismo commit que introduce el cambio, y el
+artefacto correspondiente puede revisarse antes del siguiente hito.
+
+La Tabla~\ref{tab:gestion-rup} sintetiza la correspondencia entre
+las cuatro fases del RUP adaptado, los artefactos de gestión que
+produce cada una y las herramientas concretas empleadas para
+materializarlos. La descripción técnica detallada de los pipelines,
+las suites de pruebas y los artefactos de despliegue se desarrolla
+en la Sección~\ref{subsec:cicd}.
+
+\begin{table}[ht]
+\centering
+\caption{Correspondencia entre fases del RUP adaptado, artefactos de gestión y herramientas.}
+\label{tab:gestion-rup}
+\footnotesize
+\begin{tabular}{@{}p{1.8cm}p{2.8cm}p{2.5cm}@{}}
+\toprule
+\textbf{Fase} & \textbf{Artefacto de gestión} & \textbf{Herramienta} \\
+\midrule
+Inicio & Acta de constitución, definición del problema & Documentos versionados en repositorio \\[3pt]
+Elaboración & Backlog priorizado, diagramas de arquitectura & Jira, repositorios Git \\[3pt]
+Construcción & Commits, pull requests, artefactos de CI & GitHub, GitHub Actions \\[3pt]
+Transición & Imágenes OCI, APK, informe final & GHCR, artefactos de GitHub Actions \\
+\bottomrule
+\end{tabular}
+\end{table}

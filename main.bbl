@@ -188,6 +188,11 @@ I.~Jacobson, G.~Booch, and J.~Rumbaugh, \emph{The Unified Software Development
   Process}.\hskip 1em plus 0.5em minus 0.4em\relax Reading, MA: Addison-Wesley
   Professional, 1999.
 
+\bibitem{humble2010cd}
+J.~Humble and D.~Farley, \emph{Continuous Delivery: Reliable Software Releases
+  Through Build, Test, and Deployment Automation}.\hskip 1em plus 0.5em minus
+  0.4em\relax Boston, MA: Addison-Wesley Professional, 2010.
+
 \bibitem{rfc8259}
 T.~Bray, ``The javascript object notation ({JSON}) data interchange format,''
   Internet Engineering Task Force, Tech. Rep. RFC 8259, 2017.

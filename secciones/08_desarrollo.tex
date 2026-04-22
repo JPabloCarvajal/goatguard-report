@@ -820,10 +820,254 @@ sin degradar la postura de seguridad del backend.
 \subsection{Integración continua, pruebas y despliegue}
 ~\label{subsec:cicd}
 
-% ============================================================
-% AQUI VA LO DE JOHAN
-% ============================================================
-% Pendiente de redacción: pipelines de GitHub Actions, batería de
-% tests del backend, dashboard de validación HTML, despliegue
-% contenedorizado con Docker Compose.
-% ============================================================
+La exposición de los componentes descritos en las secciones
+anteriores se sostiene sobre un conjunto de pipelines automatizados
+que validan cada incremento, producen los artefactos distribuibles
+y los publican en los registros correspondientes. Esta subsección
+describe las decisiones técnicas que materializan la práctica
+metodológica introducida en la Sección~\ref{sec:metodologia}: la
+estructura de los cuatro workflows alojados en los dos repositorios,
+la batería de pruebas ejecutada por cada uno, y la infraestructura
+de despliegue contenedorizado que recibe los artefactos resultantes.
+
+\subsubsection{Visión global}
+
+Cada uno de los dos repositorios mantiene dos workflows de GitHub
+Actions: uno de integración continua (CI) que se dispara sobre todo
+\texttt{push} y toda \textit{pull request} hacia \texttt{main}, y
+uno de entrega continua (CD) que se dispara únicamente sobre
+\texttt{push} a \texttt{main}. Los cuatro workflows imponen un
+límite temporal de diez minutos (\texttt{timeout-minutes: 10}) que
+acota el costo de una ejecución fallida y preserva el principio de
+retroalimentación rápida. Los workflows de la aplicación móvil
+incorporan además directivas de concurrencia que cancelan
+ejecuciones obsoletas cuando se registra un nuevo \texttt{push}
+sobre la misma rama, y filtros de rutas que evitan disparar el
+pipeline ante cambios exclusivamente documentales.
+
+La separación CI/CD responde a una decisión arquitectónica clásica
+documentada por Humble y Farley~\cite{humble2010cd}: validar sin
+producir artefactos acelera el ciclo de revisión, y producir
+artefactos sólo sobre la rama aceptada evita la proliferación de
+imágenes o APKs asociados a ramas de trabajo que eventualmente
+serán descartadas. La reproducibilidad se preserva mediante tres
+mecanismos: las versiones de las acciones se fijan explícitamente
+en los archivos de workflow, las dependencias se cachean con claves
+derivadas del hash del archivo de lock correspondiente, y las
+credenciales sensibles se inyectan como secretos del repositorio
+sin aparecer nunca en el código.
+
+\subsubsection{Pipeline del backend}
+
+El workflow \texttt{ci.yml} del backend ejecuta sobre una imagen
+\texttt{ubuntu-latest} cuatro etapas secuenciales. Tras el checkout
+del repositorio, instala Python 3.12 y restaura la caché de
+\texttt{pip} con clave derivada del hash de
+\texttt{requirements*.txt}. A continuación instala las dependencias
+de desarrollo, ejecuta el linter \texttt{ruff} sobre los directorios
+\texttt{src/} y \texttt{tests/}, y corre la suite completa con
+\texttt{pytest tests/ -v -{}-cov=src -{}-cov-report=xml
+-{}-cov-report=term-missing}, exportando \texttt{PYTHONPATH=.} como
+variable de entorno para que los tests puedan importar el paquete
+\texttt{src}. El reporte de cobertura se publica como artefacto del
+workflow con la condición \texttt{if: always()}, que asegura su
+disponibilidad incluso cuando la fase de pruebas falla.
+
+El workflow \texttt{cd.yml} se ejecuta únicamente sobre
+\texttt{push} a la rama principal y asume que CI ha concluido
+satisfactoriamente. Sus permisos declarativos
+(\texttt{packages: write}) habilitan la publicación en el registro
+de contenedores de GitHub. Tras autenticarse en \texttt{ghcr.io}
+con el \texttt{GITHUB\_TOKEN} inyectado automáticamente por la
+plataforma, invoca la acción \texttt{docker/build-push-action}
+sobre el \texttt{Dockerfile} de la raíz del repositorio y publica
+dos etiquetas simultáneas: el SHA del commit para trazabilidad
+exacta y \texttt{latest} para conveniencia del consumidor. La
+elección del GitHub Container Registry sobre alternativas como
+Docker Hub responde a dos criterios prácticos: la autenticación se
+resuelve con el token implícito del repositorio sin configurar
+secretos adicionales, y los límites de descarga resultan
+considerablemente más laxos en entornos automatizados donde cada
+ejecución del pipeline podría traducirse en una descarga.
+
+El \texttt{Dockerfile} del backend adopta una estrategia de
+construcción multi-etapa. Una primera etapa basada en
+\texttt{python:3.12-slim} instala las dependencias en un prefijo
+aislado; una segunda etapa, también basada en la imagen slim, copia
+exclusivamente el directorio de dependencias ya compiladas y el
+código fuente. Este patrón reduce el tamaño final de la imagen al
+descartar herramientas de compilación y cachés intermedias, y
+define además un \texttt{HEALTHCHECK} que ejercita el endpoint
+\texttt{/docs} de FastAPI periódicamente, habilitando a los
+orquestadores a detectar instancias no saludables y reemplazarlas
+automáticamente.
+
+\subsubsection{Pipeline de la aplicación móvil}
+
+El workflow \texttt{ci.yml} de la aplicación móvil replica la
+estructura del backend adaptada al stack Flutter. Instala el SDK
+mediante la acción \texttt{subosito/flutter-action} con canal
+\texttt{stable} y caché habilitada, restaura la caché de paquetes
+\texttt{pub} con clave derivada de \texttt{pubspec.lock}, y ejecuta
+tres validaciones sucesivas. El análisis estático se invoca con
+\texttt{flutter analyze -{}-no-fatal-infos}, configuración que
+habilita la visibilidad de advertencias informativas sin
+convertirlas en fallos del pipeline durante la fase de
+estabilización del proyecto. La verificación de formato emplea
+\texttt{dart format -{}-output=none -{}-set-exit-if-changed}, que
+aborta el workflow ante cualquier desviación respecto al formato
+canónico del lenguaje, preservando así una invariante de estilo
+sin intervención manual. Finalmente, \texttt{flutter test
+-{}-coverage} ejecuta las suites unitarias y de widget generando un
+reporte \texttt{lcov} que se publica como artefacto.
+
+El workflow \texttt{cd.yml} construye un APK de depuración sobre
+cada merge aceptado. Antes de invocar \texttt{flutter build}, el
+workflow materializa el archivo \texttt{google-services.json}
+requerido por Firebase: si el secreto
+\texttt{GOOGLE\_SERVICES\_JSON} está definido en el repositorio, su
+contenido codificado en base64 se decodifica y escribe en
+\texttt{android/app/google-services.json}; en caso contrario, el
+workflow genera un documento placeholder que permite completar la
+compilación aunque las notificaciones push no funcionen en el
+artefacto resultante. La URL del backend se inyecta como constante
+de compilación mediante la bandera \texttt{-{}-dart-define}, que
+vincula la constante \texttt{API\_BASE\_URL} con el valor del
+secreto homónimo del repositorio, permitiendo que el mismo binario
+apunte a distintos entornos sin modificar el código fuente. El APK resultante se publica como
+artefacto del workflow con retención de catorce días y nombre
+derivado del SHA del commit, preservando la trazabilidad hacia el
+cambio que lo originó.
+
+La decisión de empaquetar en modo depuración obedece a las
+restricciones del proyecto académico: no existe firma de
+publicación configurada y el artefacto se distribuye exclusivamente
+para demostración y pruebas internas. Un despliegue en producción
+exigiría reemplazar este paso por \texttt{flutter build apk
+-{}-release} con una configuración de firma que consuma un
+\texttt{keystore} inyectado como secreto adicional, tal como se
+reconoce en la Sección~\ref{sec:discusion} entre los elementos que
+separan el prototipo académico del producto operable.
+
+\subsubsection{Estrategia de pruebas}
+
+La pirámide de pruebas del proyecto se construye con profundidades
+distintas en cada componente, reflejando la relevancia relativa de
+la lógica de negocio frente a la capa de presentación. La
+Tabla~\ref{tab:suites-pruebas} sintetiza las suites ejecutadas por
+los pipelines de CI y su distribución por dominio funcional.
+
+\begin{table}[ht]
+\centering
+\caption{Distribución de suites de pruebas por componente y dominio.}
+\label{tab:suites-pruebas}
+\footnotesize
+\begin{tabular}{@{}p{1.8cm}p{3.5cm}c@{}}
+\toprule
+\textbf{Componente} & \textbf{Dominio} & \textbf{Suites} \\
+\midrule
+Backend & Autenticación, 2FA, scopes, recovery & 12 \\[2pt]
+Backend & Motor de anomalías y pipeline & 4 \\[2pt]
+Backend & Endpoints, rate limiting, rendimiento & 4 \\[2pt]
+Backend & Seguridad y configuración & 3 \\[2pt]
+Backend & Infraestructura (factory, migrations, edge) & 4 \\[2pt]
+App móvil & Providers y servicios & 2 \\[2pt]
+App móvil & Pantallas TOTP y registro & 3 \\[2pt]
+App móvil & Widget smoke del árbol de inyección & 1 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+En el backend, el aislamiento entre pruebas se consigue mediante la
+sobreescritura de dependencias de FastAPI con
+\texttt{app.dependency\_overrides} y una fixture de sesión por test
+que construye y destruye el esquema de base de datos en cada
+ejecución. Esta fixture opera por defecto sobre SQLite en memoria,
+lo que permite ciclos de ejecución del orden de decenas de segundos
+sobre la suite completa. Una única suite,
+\texttt{test\_auth\_race\_postgres.py}, constituye la excepción:
+ejerce un escenario de concurrencia en el consumo de tokens de
+invitación que depende de la semántica precisa de \texttt{SELECT
+\ldots FOR UPDATE}~\cite{silberschatz2018os} y por tanto requiere
+una instancia real de PostgreSQL. Esta separación entre pruebas
+rápidas sobre SQLite y pruebas puntuales sobre el motor real
+ilustra una decisión deliberada: la velocidad del ciclo de
+desarrollo se prioriza en el caso general, y el costo adicional de
+levantar el motor real se asume únicamente en el punto donde la
+semántica de SQLite difiere de la de producción.
+
+En la aplicación móvil, las pruebas se concentran en la máquina de
+estados del proveedor de autenticación y en el servicio HTTP. La
+fidelidad al comportamiento real se preserva mockeando
+exclusivamente las fronteras del sistema ---el cliente \texttt{Dio}
+y el canal \texttt{MethodChannel} que intermedia con el
+\texttt{Keystore} del dispositivo--- mientras que la lógica de
+dominio se ejerce sin sustitutos. Un único test de widget,
+\texttt{widget\_test.dart}, verifica que el árbol completo de
+inyección de dependencias se instancie sin errores al arranque,
+cumpliendo la función de prueba de integración de cableado aunque
+no de interacción con la interfaz.
+
+La cobertura instrumentada se reporta como artefacto del pipeline
+pero no se utiliza como criterio bloqueante. Esta decisión responde
+al contexto académico del proyecto, donde imponer un umbral rígido
+durante la fase de estabilización introduciría fricción sin elevar
+la calidad efectiva del código. Los objetivos declarados para la
+revisión sobre los reportes generados al cierre de cada iteración
+se sitúan en aproximadamente el setenta y cinco por ciento de
+líneas cubiertas en el módulo \texttt{src/} del backend y del
+sesenta por ciento en los módulos \texttt{lib/core/} y
+\texttt{lib/infrastructure/} de la aplicación móvil.
+
+\subsubsection{Dashboard de validación del motor de anomalías}
+
+Además de la suite \texttt{pytest} ejecutada en CI, el repositorio
+del backend incluye el script \texttt{tests/generate\_report.py},
+concebido como herramienta de evidencia auditable para la
+sustentación del proyecto. El script ejecuta los mismos
+componentes del motor de detección descritos en la
+Sección~\ref{subsec:motor} ---el baseline adaptativo, el detector
+por dispositivo y el generador de insights--- sobre series
+sintéticas con eventos conocidos: calentamiento sobre treinta
+ciclos, inyección de \textit{spikes} en el consumo de CPU,
+verificación de la conversión entre Z-Score y probabilidad, y
+validación del ciclo completo de autenticación con emisión y
+verificación de JWT.
+
+El resultado se serializa como un documento HTML autocontenido,
+\texttt{validation\_report.html}, que presenta cada ciclo con su
+valor observado, el baseline estimado, la varianza y el Z-Score
+resultante, junto con la clasificación de severidad aplicada por
+el motor. Este artefacto complementa la cobertura numérica
+reportada por CI con una visualización de la lógica algorítmica
+sobre datos conocidos, y permite a un revisor externo inspeccionar
+el comportamiento del detector sin necesidad de ejecutar el
+pipeline completo ni acceder al tráfico de red real.
+
+\subsubsection{Despliegue contenedorizado}
+
+El despliegue del backend se apoya en la imagen OCI publicada por
+\texttt{cd.yml} sobre \texttt{ghcr.io}. El archivo
+\texttt{docker-compose.yml} presente en el repositorio del servidor
+orquesta un servicio de PostgreSQL 15 con \textit{healthcheck} y
+volumen persistente \texttt{pgdata}, que constituye la dependencia
+compartida entre los dos procesos independientes descritos en la
+Sección~\ref{subsec:backend}. El motor de pipeline y la API REST
+no se incluyen en el mismo \texttt{docker-compose.yml} y se
+despliegan como contenedores separados a partir de la imagen
+publicada, coherente con la decisión arquitectónica de aislar sus
+ciclos de vida y sus perfiles de consumo de recursos.
+
+Un consumidor autorizado de la imagen puede desplegar el backend
+en cualquier entorno compatible con el runtime OCI mediante una
+secuencia de \texttt{docker pull} sobre la etiqueta del commit
+correspondiente, seguida de \texttt{docker run} con las variables
+de entorno \texttt{DATABASE\_URL} y \texttt{JWT\_SECRET} inyectadas
+en tiempo de arranque y con el puerto 8000 expuesto. Estas
+variables desacoplan la imagen de cualquier valor específico de
+entorno y permiten promover la misma imagen probada en CI hacia
+distintos entornos de despliegue sin recompilación. Esta
+propiedad, conocida en la literatura de entrega continua como
+\textit{build once, deploy anywhere}~\cite{humble2010cd}, cierra
+el ciclo entre el cambio aceptado en el repositorio y la instancia
+en ejecución sobre la que se valida el comportamiento del sistema.
