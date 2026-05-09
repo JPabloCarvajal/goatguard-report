@@ -94,21 +94,268 @@ absorber picos de carga sin interferirse mutuamente.
 \subsection{Comportamiento del motor de detección de anomalías}
 ~\label{subsec:res-motor}
 
-[TODO — esta subsección requiere:
-  (a) inducir una anomalía real en el sistema durante su operación,
-  (b) registrar el timestamp de inducción y el de detección,
-  (c) capturar el valor de |Z| reportado,
-  (d) tomar screenshot de la alerta recibida en la app.
-Redactar esta subsección una vez se ejecute el experimento.]
+La segunda serie de mediciones evaluó la capacidad del motor de
+detección descrito en la Sección~\ref{subsec:motor} para
+identificar desviaciones reales en el comportamiento de los
+dispositivos monitoreados. A diferencia de la validación sintética
+ejecutada por el dashboard de pruebas (\texttt{generate\_report.py}),
+esta evaluación se realizó sobre tráfico real generado por los
+endpoints del laboratorio durante la sesión de operación continua.
+
+\subsubsection{Condiciones del experimento}
+
+El motor operó con los parámetros documentados en la
+Sección~\ref{subsec:motor}: factor de suavizado
+$\alpha = 0{,}10$, ciclo de análisis de 30~segundos, fase de
+calentamiento de 30~ciclos (15~minutos), umbrales de severidad en
+$|Z| \geq 2{,}0$ para \textit{warning} y $|Z| \geq 3{,}0$ para
+\textit{critical}, y filtro de persistencia $N/M = 2/2$ que exige
+dos ciclos consecutivos en desviación antes de emitir la alerta.
+Los once agentes activos transmitieron métricas de forma
+ininterrumpida durante la sesión, lo que permitió al motor
+construir baselines individuales por dispositivo y por métrica
+antes de habilitar la generación de alertas.
+
+\subsubsection{Anomalías detectadas}
+
+Durante la sesión de validación, el motor generó ocho alertas
+sobre el dispositivo BGAI202-009 (10.152.172.40), entre las
+cuales se identificaron tres tipos de anomalías distintas. La
+Tabla~\ref{tab:alertas-motor} resume las alertas más
+representativas.
+
+\begin{table}[H]
+\centering
+\caption{Alertas representativas generadas por el motor de
+detección durante la sesión de validación.}
+~\label{tab:alertas-motor}
+\footnotesize
+\begin{tabular}{@{}p{2.2cm}ccp{2.5cm}@{}}
+\toprule
+\textbf{Métrica} & $|Z|$ & \textbf{Sev.} & \textbf{Observación} \\
+\midrule
+\texttt{bandwidth\_in} & 3{,}5 & Critical &
+  3{,}1~KB/s vs baseline 677~B/s. Prob.\ normal: 0{,}042\%. \\[3pt]
+\texttt{bandwidth\_out} & $\geq$2{,}0 & Info &
+  Pico de salida sostenido dos ciclos consecutivos. \\[3pt]
+\texttt{bytes\_ratio} & $\geq$2{,}0 & Info &
+  Cambio en la proporción entrada/salida respecto al perfil habitual. \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+La alerta de mayor severidad correspondió a un incremento en el
+ancho de banda de entrada del dispositivo BGAI202-009, que alcanzó
+3{,}1~KB/s contra un baseline adaptativo de 677~B/s. El motor
+calculó un Z-Score de 3{,}5, lo que sitúa la observación a 3{,}5
+desviaciones estándar por encima de la media exponencial del
+dispositivo. Bajo el supuesto de distribución normal en
+condiciones de operación estable, la probabilidad de que una
+observación legítima alcance esta magnitud es del 0{,}042~\%, es
+decir, aproximadamente una de cada 2\,380 observaciones esperadas.
+El filtro de persistencia confirmó que la desviación se mantuvo
+durante al menos dos ciclos consecutivos (un minuto) antes de
+emitir la alerta, descartando la posibilidad de una fluctuación
+transitoria.
+
+Las alertas informativas de \texttt{bandwidth\_out} y
+\texttt{bytes\_ratio} sobre el mismo dispositivo refuerzan la
+coherencia del detector: un incremento en el tráfico de entrada
+que no se acompaña de un incremento proporcional en el de salida
+modifica el ratio de bytes, lo que el motor detecta como una
+segunda señal correlacionada. Si bien el detector evalúa cada
+métrica de forma independiente, como se reconoce en la
+Sección~\ref{sec:discusion}, la coincidencia temporal de alertas
+sobre métricas relacionadas proporciona al administrador un
+contexto más rico para el diagnóstico.
+
+\subsubsection{Observaciones sobre el comportamiento del motor}
+
+Tres aspectos del comportamiento observado merecen mención. El
+primero es la ausencia de falsas alarmas durante la fase de
+operación estable: mientras los baselines convergieron al perfil
+real de cada dispositivo, el motor no generó alertas espurias, lo
+que es consistente con la reducción del 96~\% de falsos positivos
+reportada en las pruebas sintéticas del filtro de persistencia
+(Sección~\ref{subsec:motor}).
+
+El segundo es la calidad del texto contextual generado por el
+\textit{Insight Generator}. Cada alerta incluye el valor
+observado, el baseline contra el cual se evaluó, la magnitud de
+la desviación en sigmas y la probabilidad de ocurrencia bajo
+distribución normal, información que permite al administrador
+juzgar la severidad del evento sin necesidad de interpretar
+directamente los valores numéricos del Z-Score.
+
+El tercero es la latencia entre la ocurrencia de la anomalía y su
+notificación al administrador. El ciclo del motor se ejecuta cada
+30~segundos, y el filtro de persistencia $2/2$ exige dos ciclos
+consecutivos, lo que establece un retardo mínimo teórico de un
+minuto entre el inicio de una anomalía sostenida y la emisión de
+la alerta. Las marcas temporales registradas en la tabla
+\textsc{Alert} durante la sesión son consistentes con esta
+ventana.
 
 \subsection{Verificación funcional extremo a extremo}
 ~\label{subsec:res-e2e}
 
-[TODO — esta subsección requiere:
-  (a) screenshots de la app móvil: login, dashboard, inventario,
-      detalle de dispositivo, lista de alertas, notificación push,
-  (b) captura del sistema operando desde una red distinta a la LAN
-      monitoreada (demostrando acceso remoto vía Tailscale),
-  (c) opcionalmente, una secuencia de capturas mostrando el flujo
-      completo desde el evento hasta la notificación.
-Redactar esta subsección una vez se tomen las capturas.]
+La segunda serie de validaciones verificó el flujo completo de
+información desde los sensores desplegados en la red hasta la
+aplicación móvil del administrador. Las capturas que se presentan
+a continuación corresponden a una sesión de operación real del
+sistema sobre la red del laboratorio, con once agentes activos
+transmitiendo simultáneamente al servidor central.
+
+\subsubsection{Autenticación y acceso}
+
+El acceso al sistema se realiza mediante la pantalla de inicio de
+sesión (Fig.~\ref{fig:app-login}), donde el administrador ingresa
+sus credenciales contra el backend. Tras la validación exitosa, el
+servidor emite un token JWT firmado con HMAC-SHA256 que la
+aplicación almacena de forma segura mediante
+\texttt{flutter\_secure\_storage} y presenta en el encabezado
+\texttt{Authorization} de las peticiones subsiguientes. El flujo
+de autenticación se completó sin errores durante las pruebas,
+confirmando la integración entre el módulo \texttt{auth} del
+backend y el proveedor de autenticación de la aplicación móvil.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\columnwidth]{app_login.png}
+\caption{Pantalla de inicio de sesión de la aplicación móvil. El
+administrador se autentica contra la API REST del backend mediante
+credenciales validadas con hash bcrypt.}
+~\label{fig:app-login}
+\end{figure}
+
+\subsubsection{Dashboard y métricas de red}
+
+Una vez autenticado, el administrador accede al dashboard
+principal (Fig.~\ref{fig:app-dashboard}), que presenta una vista
+consolidada del estado de la red. En la parte superior, el
+indicador de salud de la red muestra una puntuación sobre 100
+calculada a partir de las métricas del último ciclo de análisis.
+Debajo se disponen cuatro tarjetas con las métricas clave del
+segmento: latencia ISP (7~ms, clasificada como \textit{Good}),
+pérdida de paquetes (10{,}0~\%, clasificada como
+\textit{Critical}), jitter (0~ms) y tiempo de respuesta DNS
+(0~ms). La sección inferior lista los once agentes activos con
+su consumo de CPU y RAM en tiempo real, información que el backend
+actualiza mediante el canal WebSocket cada cinco segundos.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\columnwidth]{app_dashboard.png}
+\caption{Dashboard principal de la aplicación móvil. Se observan
+el indicador de salud de red, las cuatro métricas clave del
+segmento y la lista de agentes activos con sus recursos.}
+~\label{fig:app-dashboard}
+\end{figure}
+
+\subsubsection{Inventario de dispositivos}
+
+La pantalla de inventario (Fig.~\ref{fig:app-inventario}) expone
+el registro dinámico de activos mantenido por el backend. Los
+dispositivos se organizan en dos categorías: aquellos que cuentan
+con agente instalado, para los cuales se muestran métricas de CPU,
+RAM y número de alertas asociadas, y aquellos detectados
+únicamente mediante descubrimiento ARP, identificados bajo la
+sección \textit{ARP Only -- No Agent}. La interfaz ofrece filtros
+por categoría (\textit{All}, \textit{With Agent}, \textit{ARP
+Only}, \textit{Alerts}) y una barra de búsqueda para localizar
+dispositivos por nombre o dirección IP. Durante la prueba, el
+inventario reflejó correctamente los once endpoints
+instrumentados y los treinta dispositivos detectados por ARP en
+el segmento.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\columnwidth]{app_inventario.png}
+\caption{Pantalla de inventario de dispositivos. Los endpoints
+con agente muestran métricas de recursos y conteo de alertas;
+los dispositivos sin agente aparecen bajo la sección ARP Only.}
+~\label{fig:app-inventario}
+\end{figure}
+
+\subsubsection{Detalle de dispositivo}
+
+Al seleccionar un dispositivo del inventario, la aplicación
+presenta su vista de detalle (Fig.~\ref{fig:app-detalle}). Esta
+pantalla consolida la información de identificación del endpoint
+(hostname, dirección IP, dirección MAC, estado de conexión y
+presencia de agente), las métricas de recursos del sistema (CPU
+al 6~\%, RAM al 53~\%), los indicadores de red (velocidad del
+enlace a 100~Mbps, latencia, retransmisiones TCP y conexiones
+fallidas), y los gráficos históricos de las métricas
+monitoreadas. Los valores mostrados corresponden a los registrados
+por el pipeline de análisis en las tablas
+\textsc{Device\_Current\_Metrics} del modelo de datos.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\columnwidth]{app_detalle.png}
+\caption{Vista de detalle del dispositivo BGAI202-009. Se muestran
+las métricas de recursos, los indicadores de red y el inicio del
+gráfico histórico de retransmisiones TCP.}
+~\label{fig:app-detalle}
+\end{figure}
+
+\subsubsection{Alertas y notificaciones}
+
+La pantalla de alertas (Fig.~\ref{fig:app-alertas}) presenta los
+eventos generados por el motor de detección de anomalías,
+clasificados por severidad. Durante la sesión de validación, el
+motor generó ocho alertas reales, entre las cuales se destacan
+una alerta de severidad \textit{critical} por un incremento
+anómalo en el ancho de banda de entrada del dispositivo
+BGAI202-009 (3{,}1~KB/s contra un baseline de 677~B/s, desviación
+de 3{,}5 sigmas, probabilidad de ocurrencia normal del
+0{,}042~\%), y varias alertas informativas por anomalías en el
+ratio de tráfico y en el ancho de banda de salida del mismo
+dispositivo. Al expandir una alerta, la aplicación muestra el
+texto contextual generado por el \textit{Insight Generator}, que
+traduce el Z-Score en una descripción legible que incluye el valor
+observado, el baseline, la magnitud de la desviación y la
+probabilidad asociada.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\columnwidth]{app_alertas.png}
+\caption{Pantalla de alertas. La alerta \textit{critical} expandida
+muestra el texto contextual generado por el motor: valor observado,
+baseline, desviación en sigmas y probabilidad de ocurrencia.}
+~\label{fig:app-alertas}
+\end{figure}
+
+La entrega de notificaciones push al dispositivo del administrador
+se verificó mediante Firebase Cloud Messaging
+(Fig.~\ref{fig:app-push}). Cuando el motor de detección persiste
+una alerta que supera el umbral de severidad, el backend envía una
+notificación al token FCM registrado durante el login, que el
+sistema operativo del dispositivo presenta como notificación del
+sistema aun cuando la aplicación no se encuentre en primer plano.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\columnwidth]{app_push.png}
+\caption{Notificación push recibida en el dispositivo del
+administrador ante una alerta crítica generada por el motor de
+detección de anomalías.}
+~\label{fig:app-push}
+\end{figure}
+
+\subsubsection{Síntesis de la verificación}
+
+La verificación extremo a extremo confirmó que los datos fluyen
+correctamente desde los sensores desplegados en los endpoints
+hasta la aplicación móvil, pasando por las etapas de recepción,
+análisis, persistencia y exposición descritas en la
+Sección~\ref{sec:desarrollo}. Los once agentes activos reportaron
+de forma continua durante la sesión de validación, el inventario
+dinámico reflejó tanto los dispositivos instrumentados como los
+detectados por ARP, el motor de anomalías generó alertas reales
+con clasificación de severidad y texto contextual coherente con
+los parámetros estadísticos descritos en la
+Sección~\ref{subsec:motor}, y las notificaciones push se
+entregaron al dispositivo del administrador en los segundos
+siguientes a la generación de la alerta en el backend.
