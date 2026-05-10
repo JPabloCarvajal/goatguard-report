@@ -6,6 +6,10 @@
 \usepackage[spanish,es-tabla]{babel}
 \usepackage{lmodern}
 \usepackage{float}
+% Barrera de floats manual (equivalente a placeins)
+\makeatletter
+\newcommand{\FloatBarrier}{\par\vfil\penalty -100\vfilneg\vtop{}}
+\makeatother
 
 % ===== Gráficos y tablas ===== 
 \usepackage{graphicx}

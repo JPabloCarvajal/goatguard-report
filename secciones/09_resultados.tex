@@ -221,7 +221,7 @@ backend y el proveedor de autenticación de la aplicación móvil.
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=\columnwidth]{app_login.png}
+\includegraphics[width=0.65\columnwidth,height=0.35\textheight,keepaspectratio]{app_login.png}
 \caption{Pantalla de inicio de sesión de la aplicación móvil. El
 administrador se autentica contra la API REST del backend mediante
 credenciales validadas con hash bcrypt.}
@@ -243,9 +243,21 @@ pérdida de paquetes (10{,}0~\%, clasificada como
 su consumo de CPU y RAM en tiempo real, información que el backend
 actualiza mediante el canal WebSocket cada cinco segundos.
 
+La clasificación de cada métrica se realiza mediante umbrales
+configurables definidos en el backend: valores por debajo del
+percentil~25 se etiquetan como \textit{Good}, entre el
+percentil~25 y~75 como \textit{Warning}, y por encima del
+percentil~75 como \textit{Critical}. Esta categorización permite
+al administrador identificar de forma inmediata los indicadores
+que requieren atención sin necesidad de interpretar valores
+numéricos absolutos. El color de cada tarjeta refleja visualmente
+la clasificación asignada, siguiendo la convención semafórica
+verde--amarillo--rojo adoptada en herramientas de monitoreo de
+referencia como Grafana y Datadog.
+
 \begin{figure}[H]
 \centering
-\includegraphics[width=\columnwidth]{app_dashboard.png}
+\includegraphics[width=0.65\columnwidth,height=0.35\textheight,keepaspectratio]{app_dashboard.png}
 \caption{Dashboard principal de la aplicación móvil. Se observan
 el indicador de salud de red, las cuatro métricas clave del
 segmento y la lista de agentes activos con sus recursos.}
@@ -268,9 +280,21 @@ inventario reflejó correctamente los once endpoints
 instrumentados y los treinta dispositivos detectados por ARP en
 el segmento.
 
+Cada tarjeta de dispositivo muestra un indicador de estado
+(\textit{online}/\textit{offline}) determinado por la recepción
+de heartbeats dentro de la ventana de tolerancia configurada en
+el backend (por defecto, 30~segundos). El conteo de alertas
+presentado junto a cada dispositivo corresponde a las alertas
+activas no resueltas, permitiendo al administrador priorizar la
+inspección de los endpoints con mayor actividad anómala. La
+separación visual entre dispositivos con agente y dispositivos
+ARP refuerza la distinción operativa entre activos gestionados y
+activos detectados pasivamente, facilitando la identificación de
+dispositivos no autorizados o no catalogados en la red.
+
 \begin{figure}[H]
 \centering
-\includegraphics[width=\columnwidth]{app_inventario.png}
+\includegraphics[width=0.65\columnwidth,height=0.35\textheight,keepaspectratio]{app_inventario.png}
 \caption{Pantalla de inventario de dispositivos. Los endpoints
 con agente muestran métricas de recursos y conteo de alertas;
 los dispositivos sin agente aparecen bajo la sección ARP Only.}
@@ -291,9 +315,21 @@ monitoreadas. Los valores mostrados corresponden a los registrados
 por el pipeline de análisis en las tablas
 \textsc{Device\_Current\_Metrics} del modelo de datos.
 
+La sección de gráficos históricos presenta series temporales de
+las últimas horas para métricas seleccionadas, renderizadas
+mediante la biblioteca \texttt{fl\_chart}. Estas visualizaciones
+permiten al administrador detectar tendencias y correlacionar
+eventos de forma visual. El ícono de edición en la esquina
+superior derecha permite asignar un alias descriptivo al
+dispositivo, reemplazando el identificador automático generado
+durante el registro. La latencia reportada como 0~ms indica que
+el dispositivo se encuentra en el mismo segmento de red local que
+el backend, lo cual es consistente con la topología del entorno
+de prueba descrito en la Sección~\ref{sec:desarrollo}.
+
 \begin{figure}[H]
 \centering
-\includegraphics[width=\columnwidth]{app_detalle.png}
+\includegraphics[width=0.65\columnwidth,height=0.35\textheight,keepaspectratio]{app_detalle.png}
 \caption{Vista de detalle del dispositivo BGAI202-009. Se muestran
 las métricas de recursos, los indicadores de red y el inicio del
 gráfico histórico de retransmisiones TCP.}
@@ -318,9 +354,20 @@ traduce el Z-Score en una descripción legible que incluye el valor
 observado, el baseline, la magnitud de la desviación y la
 probabilidad asociada.
 
+Las alertas se ordenan por timestamp descendente, mostrando
+primero los eventos más recientes. Cada entrada incluye el
+identificador del dispositivo afectado, la dirección IP y un
+resumen del tipo de anomalía detectada (\textit{Bandwidth Spike
+In}, \textit{Traffic Ratio Anomaly}, \textit{Bandwidth Spike
+Out}). La codificación cromática diferencia las severidades:
+rojo para \textit{critical}, naranja para \textit{warning} y
+azul para \textit{info}. Esta jerarquía visual permite al
+administrador realizar un triaje rápido de los eventos sin
+necesidad de inspeccionar cada alerta individualmente.
+
 \begin{figure}[H]
 \centering
-\includegraphics[width=\columnwidth]{app_alertas.png}
+\includegraphics[width=0.65\columnwidth,height=0.35\textheight,keepaspectratio]{app_alertas.png}
 \caption{Pantalla de alertas. La alerta \textit{critical} expandida
 muestra el texto contextual generado por el motor: valor observado,
 baseline, desviación en sigmas y probabilidad de ocurrencia.}
@@ -335,9 +382,23 @@ notificación al token FCM registrado durante el login, que el
 sistema operativo del dispositivo presenta como notificación del
 sistema aun cuando la aplicación no se encuentre en primer plano.
 
+El contenido de la notificación incluye el nombre del sistema
+(\textit{GOATGuard}), la severidad de la alerta y una descripción
+abreviada del evento, proporcionando contexto suficiente para que
+el administrador decida si la situación requiere intervención
+inmediata. La latencia observada entre la generación de la alerta
+en el backend y la recepción de la notificación en el dispositivo
+fue inferior a cinco segundos en todas las pruebas realizadas,
+confirmando la viabilidad del canal FCM para escenarios de
+respuesta operativa en tiempo cuasi-real. El sistema operativo
+Android agrupa las notificaciones bajo el canal configurado por
+la aplicación, permitiendo al usuario personalizar el
+comportamiento de vibración, sonido y prioridad de forma
+independiente.
+
 \begin{figure}[H]
 \centering
-\includegraphics[width=\columnwidth]{app_push.png}
+\includegraphics[width=0.65\columnwidth,height=0.35\textheight,keepaspectratio]{app_push.png}
 \caption{Notificación push recibida en el dispositivo del
 administrador ante una alerta crítica generada por el motor de
 detección de anomalías.}
